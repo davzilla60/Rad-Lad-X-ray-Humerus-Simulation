@@ -87,7 +87,7 @@ Grading references (arm-frame mm) are in `assets/calib.json`:
   - `*_t.jpg`: title thumbnails.
   - `calib.json` / `calib.js`: geometry, tolerances, film reference values.
   - The logos.
-- `assets/src/` holds the original images. Run `python ../tools/prep_assets.py` from inside `assets/` to rebuild.
+- `assets/src/` holds the original images. The Shutterstock AP original (`ap.jpg`) is licensed and is **not** in the repo, so keep your own copy there to rebuild. Run `python ../tools/prep_assets.py` from inside `assets/` to rebuild.
 
 Debug hooks: `window.__xr` (`S()`, `cur()`, `setCase(k)`, `startProj(p)`, `gotoCentre()`, `gotoExpose()`,
 `ideal()`, `expose()`, `accept()`, `grade(p, shot)`, `parse(cmd)`) and `window.__room()`.
