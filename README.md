@@ -1,8 +1,8 @@
 # X Marks the Spot — Humerus X-ray
 
 An embeddable, single-file teaching simulator for the Rad-Lad website. It's the second plain-film sim in
-*X Marks the Spot*, after the chest. It uses the same console layout and engine. The radiographs are a real AP and a
-real lateral humerus, from **two different people** (see `CREDITS.md`). Your set-up is then simulated onto them in the
+*X Marks the Spot*, after the chest. It uses the same console layout and engine. The radiographs are a real AP (Shutterstock, licensed) and a
+real lateral humerus (FracAtlas, CC BY 4.0), from **two different people** (see `CREDITS.md`). Your set-up is then simulated onto them in the
 browser.
 
 Marker: **That's so Humerus!** (glyph "H"). You earn it when both views score 45/50 or more on the first exposure,

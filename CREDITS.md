@@ -10,6 +10,8 @@ The two films are from **different people**. They were combined into one teachin
 Chowdhury, Tareque; Shatabda, Swakkhar (2023). *FracAtlas: A Dataset for Fracture Classification, Localization and
 Segmentation of Musculoskeletal Radiographs.* figshare. Dataset. https://doi.org/10.6084/m9.figshare.22363012.v7
 
+Source file: https://figshare.com/articles/dataset/The_dataset/22363012?file=65518038
+
 Licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 The film shows a plate and screws from earlier fixation. That metalwork belongs to the source film, not to the
@@ -17,7 +19,8 @@ simulated patient.
 
 ### AP humerus
 
-A normal AP humerus radiograph supplied for this project.
+A normal AP humerus radiograph from **Shutterstock**, used under the Rad-Lad Shutterstock subscription licence. It
+isn't covered by an open licence and mustn't be reused outside this simulator.
 
 ### Changes made
 
