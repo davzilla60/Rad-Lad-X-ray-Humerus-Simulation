@@ -37,8 +37,16 @@ with no repeats.
 4. **Exposure.** Set kV, AEC chambers or manual mAs, grid, and the instruction (stop breathing / keep still /
    none).
 5. **Review.** Accept, or repeat for 5 points plus the extra dose.
-6. **Lateral.** She stays in the same position and only the arm is re-rotated. A note explains that with a suspected
-   fracture you'd turn the patient, or use a horizontal-beam lateral, instead of rotating the arm.
+6. **Lateral.** She stays standing, seated or supine as for the AP, and the arm is internally rotated with the elbow
+   flexed.
+   - **At the stand**, you also choose which way she faces. Turning her to **face the stand**, about 45° toward her
+     right so the humerus lies on the detector, is the PA (mediolateral) lateral and scores full marks. The light-beam
+     view then shows her back, mirrored, and the image is flipped for display. Keeping her back to the stand
+     (lateromedial) scores 1/3 for facing, because the arm sits further from the detector.
+   - **On the table**, it's a lateromedial lateral beside her, with no facing choice.
+
+   A note explains that with a suspected fracture you'd turn the patient, or use a horizontal-beam lateral, instead
+   of rotating the arm.
 7. **Debrief.** Both films, the image criteria, a scored breakdown (50 per view) and the total DAP.
 
 ### The key trick: one arm frame, two films

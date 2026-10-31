@@ -1103,13 +1103,19 @@ window.SCG_ROOM3D = function(THREE, host){
       AX = { f:new V3(CRW.x, fy - 0.05, CRW.z), c:new V3(CRW.x, TBUCKY + 0.002, CRW.z), u:new V3(1, 0, 0), v:new V3(0, 0, 1) };
       det.position.set(0, 1.25, 0);
     } else {
-      patient.quaternion.identity();
+      // back to the stand (AP), or facing it and turned ~43° toward her right so the humerus lies on the detector
+      // (PA mediolateral lateral: the forearm runs along the detector face, clear of it)
+      var pa = p.face === "pa";
+      patient.quaternion.identity(); patient.rotation.set(0, pa ? Math.PI + 0.75 : 0, 0);
       var drop = p.pos === "sit" ? -0.37 : 0;
-      patient.position.set(-crL.x, drop, DZ + 0.112);
-      DH = drop + crL.y;
-      CRW.set(0, DH, DZ + 0.112 + crL.z);
+      patient.position.set(0, drop, 0); patient.updateMatrixWorld(true);
+      var cw = patient.localToWorld(crL.clone());
+      var zOff = pa ? DZ + 0.055 - cw.z : DZ + 0.112;              // humerus ~5.5 cm from the face when facing it
+      patient.position.set(-cw.x, drop, zOff);
+      DH = cw.y;
+      CRW.set(0, DH, pa ? DZ + 0.055 : DZ + 0.112 + crL.z);
       det.position.set(0, DH, 0);
-      stool.position.set(-crL.x, 0, DZ + 0.16);
+      stool.position.set(-cw.x + (pa ? 0.06 : 0), 0, zOff + (pa ? -0.03 : 0.05));
       bucky.position.set(TX, TBUCKY, 0.3);
       head.rotation.x = 0;
       var zT = DZ + SID;
@@ -1199,7 +1205,7 @@ window.SCG_ROOM3D = function(THREE, host){
 
   return {
     setPose:function(p){
-      var old = POSE; POSE = Object.assign({}, POSE, p);
+      var old = POSE; POSE = Object.assign({ face:"ap" }, p);
       if(old.pos !== POSE.pos || old.rot !== POSE.rot) buildPose(POSE);
       place();
     },
@@ -1295,6 +1301,9 @@ var SET = {
     { key:"sid", label:"SID", seg:[100, 150, 180], ok:100, s:"100 cm is the standard SID for the humerus, at the stand or on the table" }
   ],
   lat: [
+    { key:"face", label:"Facing", erect:1, opts:[
+      { v:"pa", b:"Turn her to face the stand", s:"rotated ~45° toward her right so the humerus lies on the detector: a PA (mediolateral) lateral, flipped for display" },
+      { v:"ap", b:"Keep her back to the stand", s:"lateromedial: the internally rotated arm sits further from the detector" } ] },
     { key:"rot", label:"Arm", opts:[ ROT_INT, ROT_AP ], ok:"int" },
     { key:"sid", label:"SID", seg:[100, 150, 180], ok:100, s:"100 cm, the same as the AP" }
   ]
@@ -1314,7 +1323,7 @@ var AEC_CH = { l:[-85, -55], c:[0, 25], r:[85, -55] };            // chamber cen
 var S;
 function freshProj(p){
   return {
-    set: p==="ap" ? { pos:null, rot:null, sid:null } : { rot:null, sid:null },
+    set: p==="ap" ? { pos:null, rot:null, sid:null } : { face:null, rot:null, sid:null },
     field: { cx:135, cy:200, w:200, h:300 },
     marker: null,                                  // { l:"L"|"R", x, y } in arm mm
     expo: { kv:75, mas:5, aec:true, ch:{ l:false, c:true, r:false }, grid:true, breath:null },
@@ -1421,8 +1430,9 @@ function render(){
   }
   else if(ph==="setup"){
     railTitle.textContent=PROJ[S.proj].long+" · set-up"; railDesc.textContent="The 3-D room updates as you choose · drag to look around";
-    if(S.proj==="lat") h += '<div class="scg-hint">She stays <b>'+POSNAME[posNow()]+'</b>, as for the AP. Only the arm moves.</div>';
+    if(S.proj==="lat") h += '<div class="scg-hint">She stays <b>'+POSNAME[posNow()]+'</b>, as for the AP'+(posNow()==="supine" ? '. Only the arm moves.' : ', but for the lateral you can turn her to face the stand.')+'</div>';
     SET[S.proj].forEach(function(g){
+      if(g.erect && posNow()==="supine") return;
       h += '<div class="xr-grp"><span>'+g.label+'</span>';
       if(g.seg){ h += '<div class="scg-seg" data-key="'+g.key+'">'+g.seg.map(function(v){ return '<button type="button" data-v="'+v+'" class="'+(P.set[g.key]===v?"is-on":"")+'">'+v+' cm</button>'; }).join("")+'</div><div class="scg-hint">'+g.s+'</div>'; }
       else h += choiceBtns(g.opts, P.set[g.key], g.key);
@@ -1434,7 +1444,7 @@ function render(){
     railTitle.textContent=PROJ[S.proj].long+" · light beam"; railDesc.textContent="X marks the spot: cross-wires = central ray";
     var f=P.field;
     h += '<div class="scg-readout"><div class="scg-ro-lab">Light field</div><div class="scg-ro-val">'+(f.w/10).toFixed(1)+' × '+(f.h/10).toFixed(1)+' <small>cm</small></div></div>';
-    h += '<div class="scg-hint">You are at the tube, looking at her front: her right arm is on your left. <b>Drag the field</b> to put the cross-wires on the central ray point; <b>drag its edges</b> to collimate (the collimator opens symmetrically). Include the <b>shoulder and elbow joints</b> and the soft tissue of the arm, and no more than you need.</div>';
+    h += '<div class="scg-hint">'+(mirrored() ? 'You are at the tube, looking at her <b>back</b> (she faces the stand): her right arm is on your right. The image will be flipped for display. ' : 'You are at the tube, looking at her front: her right arm is on your left. ')+'<b>Drag the field</b> to put the cross-wires on the central ray point; <b>drag its edges</b> to collimate (the collimator opens symmetrically). Include the <b>shoulder and elbow joints</b> and the soft tissue of the arm, and no more than you need.</div>';
     h += '<div class="xr-grp"><span>Anatomical marker</span><div class="scg-hint">Drag a lead marker onto the detector inside the field, clear of anatomy.</div>'+
          '<div class="scg-seg" id="xrMkBtns"><button type="button" data-l="L" class="'+(P.marker&&P.marker.l==="L"?"is-on":"")+'">L marker</button><button type="button" data-l="R" class="'+(P.marker&&P.marker.l==="R"?"is-on":"")+'">R marker</button></div>'+
          '<div class="scg-hint">'+(P.marker ? 'Marker <b>'+P.marker.l+'</b> placed — drag it to adjust.' : 'Tap a marker to drop it in the field, then drag it.')+'</div></div>';
@@ -1535,7 +1545,7 @@ function init3D(){
 function roomPose(){
   var s=cur().set;
   if(S.phase==="req") return { pos:S.kase==="trolley" ? "supine" : "stand", rot:"rest" };
-  return { pos:posNow(), rot:s.rot || "rest" };
+  return { pos:posNow(), rot:s.rot || "rest", face:S.proj==="lat" && s.face==="pa" ? "pa" : "ap" };
 }
 function fieldWorld(){        // light field for the room: size, and the central ray relative to the mid-humerus
   var f=cur().field, ref=CAL.ref;
@@ -1567,24 +1577,29 @@ function smooth(pts){                       // closed Catmull-Rom -> cubic bezie
   }
   return d+" Z";
 }
-function bodyArm(){
-  var s=cur().set, rot=s.rot || "rest", g="";
-  // torso in the gown (her right side, chest wall and shoulder), neck and face
-  var torso=[[MID-48,-30],[260,-12],[200,8],[160,22],[150,60],[152,140],[150,230],[154,300],[166,380],[172,520],[700,520],[700,-30]];
-  g += '<path d="'+smooth(torso)+'" fill="url(#xrGown)" stroke="#5f7f92" stroke-width="2"/>';
-  g += '<path d="'+smooth([[MID-46,-120],[MID+46,-120],[MID+52,-10],[MID-52,-10]])+'" fill="#c9926f"/>';
-  var hy=-175;
-  g += '<ellipse cx="'+MID+'" cy="'+hy+'" rx="72" ry="92" fill="#cf9a7c"/><path d="M'+(MID-74)+' '+(hy-20)+' Q'+MID+' '+(hy-140)+' '+(MID+74)+' '+(hy-20)+' Q'+MID+' '+(hy-75)+' '+(MID-74)+' '+(hy-20)+'Z" fill="#2a2018"/>'+
-       '<ellipse cx="'+(MID-26)+'" cy="'+(hy-8)+'" rx="10" ry="5" fill="#3b2c22"/><ellipse cx="'+(MID+26)+'" cy="'+(hy-8)+'" rx="10" ry="5" fill="#3b2c22"/><path d="M'+(MID-14)+' '+(hy+45)+' Q'+MID+' '+(hy+52)+' '+(MID+14)+' '+(hy+45)+'" stroke="#9a5a4e" stroke-width="3" fill="none"/>';
+/* her right arm and side in arm mm, as seen from the front. back = the tube sees her back (facing the stand): the caller
+   mirrors the drawing, the head shows hair, and the forearm across her front is hidden behind the torso. */
+function bodyArm(back){
+  var s=cur().set, rot=s.rot || "rest", g="", armG="";
   // the right arm (skin), then the short gown sleeve over the shoulder
   var upper=[[150,28],[112,50],[90,92],[78,140],[73,200],[72,260],[68,320],[60,370]], medialUp=[[116,360],[124,300],[132,240],[140,180],[150,140]];
   var arm;
   if(rot==="int") arm=upper.concat([[60,402],[78,428],[200,432],[330,428],[372,432],[410,416],[408,382],[372,370],[330,374],[200,372],[122,368]]).concat(medialUp);
   else arm=upper.concat([[58,410],[62,480],[66,560],[120,560],[118,480],[114,410]]).concat(medialUp);
-  g += '<path d="'+smooth(arm)+'" fill="#cf9a7c" stroke="#a87458" stroke-width="2"/>';
-  if(rot==="sup") g += '<path d="M84 470 Q90 520 92 560" stroke="#a87458" stroke-width="2" fill="none"/>';
-  g += '<path d="'+smooth([[152,24],[112,48],[88,96],[80,150],[142,166],[154,138]])+'" fill="url(#xrGown)" stroke="#5f7f92" stroke-width="2"/>';
-  return g;
+  armG += '<path d="'+smooth(arm)+'" fill="#cf9a7c" stroke="#a87458" stroke-width="2"/>';
+  if(rot==="sup") armG += '<path d="M84 470 Q90 520 92 560" stroke="#a87458" stroke-width="2" fill="none"/>';
+  armG += '<path d="'+smooth([[152,24],[112,48],[88,96],[80,150],[142,166],[154,138]])+'" fill="url(#xrGown)" stroke="#5f7f92" stroke-width="2"/>';
+  if(back) g += armG;
+  // torso in the gown (her right side, chest wall and shoulder), neck and head
+  var torso=[[MID-48,-30],[260,-12],[200,8],[160,22],[150,60],[152,140],[150,230],[154,300],[166,380],[172,520],[700,520],[700,-30]];
+  g += '<path d="'+smooth(torso)+'" fill="url(#xrGown)" stroke="#5f7f92" stroke-width="2"/>';
+  if(back) g += '<path d="M'+(MID-6)+' -10 V40 M'+(MID+6)+' -10 V40" stroke="#8a6a55" stroke-width="2"/>';   // gown ties
+  g += '<path d="'+smooth([[MID-46,-120],[MID+46,-120],[MID+52,-10],[MID-52,-10]])+'" fill="#c9926f"/>';
+  var hy=-175;
+  if(back){ g += '<ellipse cx="'+MID+'" cy="'+hy+'" rx="74" ry="94" fill="#2a2018"/><ellipse cx="'+MID+'" cy="'+(hy-40)+'" rx="36" ry="30" fill="#1f1812"/>'; return g; }
+  g += '<ellipse cx="'+MID+'" cy="'+hy+'" rx="72" ry="92" fill="#cf9a7c"/><path d="M'+(MID-74)+' '+(hy-20)+' Q'+MID+' '+(hy-140)+' '+(MID+74)+' '+(hy-20)+' Q'+MID+' '+(hy-75)+' '+(MID-74)+' '+(hy-20)+'Z" fill="#2a2018"/>'+
+       '<ellipse cx="'+(MID-26)+'" cy="'+(hy-8)+'" rx="10" ry="5" fill="#3b2c22"/><ellipse cx="'+(MID+26)+'" cy="'+(hy-8)+'" rx="10" ry="5" fill="#3b2c22"/><path d="M'+(MID-14)+' '+(hy+45)+' Q'+MID+' '+(hy+52)+' '+(MID+14)+' '+(hy+45)+'" stroke="#9a5a4e" stroke-width="3" fill="none"/>';
+  return g + armG;
 }
 function landmarks(){
   var s=cur().set, L=[[148, 40, "acromion"]];
@@ -1593,13 +1608,17 @@ function landmarks(){
   return L;
 }
 var drag=null;
+/* facing the stand for the lateral, the tube sees her back: the view is the mirror image of the (flipped-for-display) film */
+function mirrored(){ return S.proj==="lat" && posNow()!=="supine" && cur().set.face==="pa"; }
+function VX(x){ return mirrored() ? 2*(VIEW.x0+VIEW.s/2) - x : x; }          // film x <-> view x (its own inverse)
 function drawLF(){
-  var P=cur(), v=VIEW, f=P.field, sup=posNow()==="supine";
+  var P=cur(), v=VIEW, f=P.field, sup=posNow()==="supine", mir=mirrored();
   svg.setAttribute("viewBox", v.x0+" "+v.y0+" "+v.s+" "+v.s);
   var x0=f.cx-f.w/2, x1=f.cx+f.w/2, y0=f.cy-f.h/2, y1=f.cy+f.h/2, cx=f.cx;
   var h = '<defs><pattern id="xrGown" width="24" height="24" patternUnits="userSpaceOnUse"><rect width="24" height="24" fill="#a9c8d8"/><path d="M12 7 l5 5 -5 5 -5 -5Z" fill="#8fb3c8"/></pattern>'+
           '<radialGradient id="xrRoom" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#d9dedb"/><stop offset="1" stop-color="#9aa29d"/></radialGradient></defs>';
   h += '<rect x="'+v.x0+'" y="'+v.y0+'" width="'+v.s+'" height="'+v.s+'" fill="url(#xrRoom)"/>';
+  h += mir ? '<g transform="matrix(-1 0 0 1 '+(2*(v.x0+v.s/2))+' 0)">' : '<g>';
   if(sup){   // looking down at the table: carbon top, mattress, her right arm on it
     h += '<rect x="-10" y="'+v.y0+'" width="'+(v.x0+v.s+10)+'" height="'+v.s+'" fill="#2e3338"/><rect x="5" y="'+v.y0+'" width="'+(v.x0+v.s)+'" height="'+v.s+'" fill="#39424d"/>';
     h += '<rect x="-16" y="'+v.y0+'" width="8" height="'+v.s+'" fill="#c9cfd3"/>';
@@ -1608,7 +1627,7 @@ function drawLF(){
     h += '<rect x="'+(cx-250)+'" y="'+(f.cy-250)+'" width="500" height="500" fill="#2e3338"/>';
     h += '<rect x="'+(cx-215)+'" y="'+(f.cy-215)+'" width="430" height="430" fill="none" stroke="rgba(235,240,245,.35)" stroke-width="2" stroke-dasharray="8 6"/>';
   }
-  h += bodyArm();
+  h += bodyArm(mir);
   if(S.showAec){
     Object.keys(AEC_CH).forEach(function(k){ var c=AEC_CH[k]; h += '<rect x="'+(cx+c[0]-28)+'" y="'+(f.cy+c[1]-38)+'" width="56" height="76" fill="none" stroke="rgba(255,236,150,.85)" stroke-width="2.5" stroke-dasharray="7 5"/>'; });
   }
@@ -1623,26 +1642,28 @@ function drawLF(){
     h += '<rect data-e="'+e[0]+'" x="'+(e[1]-(horiz?14:40))+'" y="'+(e[2]-(horiz?40:14))+'" width="'+(horiz?28:80)+'" height="'+(horiz?80:28)+'" fill="transparent" style="cursor:'+e[3]+'-resize"/>';
     h += '<rect x="'+(e[1]-(horiz?4:22))+'" y="'+(e[2]-(horiz?22:4))+'" width="'+(horiz?8:44)+'" height="'+(horiz?44:8)+'" rx="3" fill="#ffd38a" pointer-events="none"/>';
   });
-  h += '<text x="'+(x0+6)+'" y="'+(y1+20)+'" font-family="ui-monospace,monospace" font-size="15" fill="#ffe6b0" stroke="#000" stroke-width="3" paint-order="stroke">'+(f.w/10).toFixed(1)+' × '+(f.h/10).toFixed(1)+' cm</text>';
+  h += '</g>';
+  h += '<text x="'+(Math.min(VX(x0), VX(x1))+6)+'" y="'+(y1+20)+'" font-family="ui-monospace,monospace" font-size="15" fill="#ffe6b0" stroke="#000" stroke-width="3" paint-order="stroke">'+(f.w/10).toFixed(1)+' × '+(f.h/10).toFixed(1)+' cm</text>';
   if(S.palp) landmarks().forEach(function(m){
-    h += '<circle cx="'+m[0]+'" cy="'+m[1]+'" r="6" fill="#ff5a4a" stroke="#fff" stroke-width="2" pointer-events="none"/>';
-    if(m[2]) h += '<text x="'+(m[0]+(m[0]<90?-10:10))+'" y="'+(m[1]+5+(m[3]||0))+'" text-anchor="'+(m[0]<90?"end":"start")+'" font-family="ui-monospace,monospace" font-size="13" fill="#fff" stroke="#000" stroke-width="3.5" paint-order="stroke" pointer-events="none">'+m[2]+'</text>';
+    var lx=VX(m[0]), left=(m[0]<90)!==mir;
+    h += '<circle cx="'+lx+'" cy="'+m[1]+'" r="6" fill="#ff5a4a" stroke="#fff" stroke-width="2" pointer-events="none"/>';
+    if(m[2]) h += '<text x="'+(lx+(left?-10:10))+'" y="'+(m[1]+5+(m[3]||0))+'" text-anchor="'+(left?"end":"start")+'" font-family="ui-monospace,monospace" font-size="13" fill="#fff" stroke="#000" stroke-width="3.5" paint-order="stroke" pointer-events="none">'+m[2]+'</text>';
   });
   if(P.marker){
-    var mx=P.marker.x, my=P.marker.y;
+    var mx=VX(P.marker.x), my=P.marker.y;
     h += '<g class="xr-mk" id="xrMk"><rect x="'+(mx-14)+'" y="'+(my-14)+'" width="28" height="28" rx="5" fill="#d23c2e" stroke="#fff" stroke-width="2"/>'+
          '<text x="'+mx+'" y="'+(my+8)+'" text-anchor="middle" font-family="Trebuchet MS,sans-serif" font-weight="700" font-size="22" fill="#fff">'+P.marker.l+'</text></g>';
   }
-  h += '<text x="'+(v.x0+12)+'" y="'+(v.y0+v.s/2+5)+'" font-family="ui-monospace,monospace" font-size="14" fill="#e8ece9" stroke="#000" stroke-width="3" paint-order="stroke">◂ patient\'s RIGHT</text>';
-  h += '<text x="'+(v.x0+v.s-12)+'" y="'+(v.y0+v.s/2+5)+'" text-anchor="end" font-family="ui-monospace,monospace" font-size="14" fill="#e8ece9" stroke="#000" stroke-width="3" paint-order="stroke">patient\'s LEFT ▸</text>';
+  h += '<text x="'+(v.x0+12)+'" y="'+(v.y0+v.s/2+5)+'" font-family="ui-monospace,monospace" font-size="14" fill="#e8ece9" stroke="#000" stroke-width="3" paint-order="stroke">◂ patient\'s '+(mir?"LEFT":"RIGHT")+'</text>';
+  h += '<text x="'+(v.x0+v.s-12)+'" y="'+(v.y0+v.s/2+5)+'" text-anchor="end" font-family="ui-monospace,monospace" font-size="14" fill="#e8ece9" stroke="#000" stroke-width="3" paint-order="stroke">patient\'s '+(mir?"RIGHT":"LEFT")+' ▸</text>';
   svg.innerHTML = h;
   info.textContent = "LIGHT BEAM · "+PROJ[S.proj].name+"\nview from the tube side";
-  info2.textContent = sup ? "looking down at the table" : "you face her: her right arm on your left";
+  info2.textContent = sup ? "looking down at the table" : (mir ? "you see her BACK: her right arm on your right" : "you face her: her right arm on your left");
 }
 function svgPt(e){ var p=svg.createSVGPoint(); p.x=e.clientX; p.y=e.clientY; var q=p.matrixTransform(svg.getScreenCTM().inverse()); return [q.x, q.y]; }
 svg.addEventListener("pointerdown", function(e){
   if(S.phase!=="centre") return;
-  var t=e.target, P=cur(), p=svgPt(e), fx=p[0], fy=p[1];
+  var t=e.target, P=cur(), p=svgPt(e), fx=VX(p[0]), fy=p[1];
   if(t.closest && t.closest("#xrMk")) drag={ k:"mk", ox:P.marker.x-fx, oy:P.marker.y-fy };
   else if(t.dataset && t.dataset.e) drag={ k:t.dataset.e };
   else if(t.id==="xrMove") drag={ k:"move", ox:P.field.cx-fx, oy:P.field.cy-fy };
@@ -1651,7 +1672,7 @@ svg.addEventListener("pointerdown", function(e){
 });
 svg.addEventListener("pointermove", function(e){
   if(!drag) return;
-  var P=cur(), f=P.field, p=svgPt(e), fx=p[0], fy=p[1];
+  var P=cur(), f=P.field, p=svgPt(e), fx=VX(p[0]), fy=p[1];
   if(drag.k==="move"){ f.cx=Math.round(fx+drag.ox); f.cy=Math.round(fy+drag.oy); }
   else if(drag.k==="mk"){ P.marker.x=Math.round(fx+drag.ox); P.marker.y=Math.round(fy+drag.oy); }
   else if(drag.k==="l"||drag.k==="r") f.w=clampF(2*Math.abs(fx-f.cx));
@@ -1663,7 +1684,7 @@ svg.addEventListener("pointerup", endDrag); svg.addEventListener("pointercancel"
 function clampF(v){ return Math.max(60, Math.min(430, Math.round(v/5)*5)); }
 function dropMarker(l){
   var P=cur(), f=P.field;
-  if(!P.marker) P.marker={ l:l, x:Math.round(f.cx + f.w/2 - 25), y:Math.round(f.cy - f.h/2 + 25) };
+  if(!P.marker) P.marker={ l:l, x:Math.round(f.cx + (mirrored()?-1:1)*(f.w/2 - 25)), y:Math.round(f.cy - f.h/2 + 25) };
   else P.marker.l=l;
   log("Lead marker <b>"+l+"</b> on the detector.", "sys"); drawLF(); render();
 }
@@ -1679,8 +1700,9 @@ function renderLfTools(){
 function gotoReq(){ setPhase("req"); init3D(); syncRoom(); loadFilms(function(){}); log("New request: AP and lateral right humerus. Choose the patient, check the request, prepare her.", "sys"); }
 function startProj(p){
   if(p==="ap"){ var miss=CHECKS.filter(function(c){ return !S.checks[c.id]; }); if(miss.length) log("Not done: "+miss.map(function(c){ return c.t.toLowerCase(); }).join("; ")+".", "warn"); }
-  S.proj=p; setPhase("setup"); syncRoom();
-  log(p==="ap" ? "AP humerus: decide how she is positioned, and set the arm." : "Lateral: she stays where she is — re-position the arm for the lateral.", "sys");
+  S.proj=p; if(p==="lat" && posNow()==="supine") S.lat.set.face="table";
+  setPhase("setup"); syncRoom();
+  log(p==="ap" ? "AP humerus: decide how she is positioned, and set the arm." : (posNow()==="supine" ? "Lateral: she stays on the table — re-position the arm." : "Lateral: decide which way she faces the stand, and set the arm."), "sys");
 }
 function gotoCentre(){ setPhase("centre"); renderLfTools(); drawLF(); log("Light beam on. Put the cross-wires on the spot and collimate.", "sys"); }
 function gotoExpose(){
@@ -1790,7 +1812,7 @@ function renderShot(sh){
   var g=cv.getContext("2d"), img=g.createImageData(W, H), out=new Float32Array(W*H);
   var set=sh.set, e=sh.expo, sid=set.sid||100, mm=C.mmpp;
   // magnification relative to the reference film (arm ~6 cm from the detector at 100 cm; ~7 cm through the table)
-  var oid = set.pos==="supine" ? 7 : 6, mBody = (sid/(sid-oid))/(100/94);
+  var oid = set.pos==="supine" ? 7 : (set.face==="ap" && set.rot==="int" ? 9 : 6), mBody = (sid/(sid-oid))/(100/94);
   var cx=f.cx, cy=f.cy;
   for(var j=0;j<H;j++){
     var y=f.cy-f.h/2+(j+0.5)/k;
@@ -1849,7 +1871,7 @@ function renderShot(sh){
   }
   return cv;
 }
-function shotLabel(sh){ return (sh.set.rot==="int" ? "LAT" : "AP")+" R HUMERUS · "+(sh.set.pos==="supine" ? "SUPINE" : (sh.set.pos==="sit" ? "SEATED" : "ERECT")); }
+function shotLabel(sh){ return (sh.set.rot==="int" ? "LAT" : "AP")+" R HUMERUS · "+(sh.set.pos==="supine" ? "SUPINE" : (sh.set.pos==="sit" ? "SEATED" : "ERECT"))+(sh.set.face==="pa" ? " · PA, FLIPPED" : ""); }
 function showShot(sh){
   var c=sh.cv, s=Math.min(1, 1400/Math.max(c.width, c.height));
   viewCv.width=Math.round(c.width*s); viewCv.height=Math.round(c.height*s);
@@ -1870,7 +1892,10 @@ function gradeShot(p, sh){
     row(po[1], "Patient position", po[0], 5, po[2]);
     row(set.rot==="sup"?"ok":"bad", "Arm rotation", set.rot==="sup"?6:0, 6, set.rot==="sup" ? "Hand supinated, epicondyles parallel to the detector: a true AP, the greater tuberosity in profile laterally." : "Internally rotated: that's the lateral position. Your 'AP' is a lateral, as you can see on the image.");
   } else {
-    row(set.rot==="int"?"ok":"bad", "Arm rotation", set.rot==="int"?11:0, 11, set.rot==="int" ? "Internally rotated with the elbow flexed: epicondyles superimposed, the lesser tuberosity in profile medially. That's 90° to the AP." : "The arm wasn't rotated, so this is a second AP, not a lateral, as you can see on the image.");
+    var fc=set.face;
+    if(fc==="table") row("ok", "Facing", 3, 3, "On the table: a lateromedial lateral with the arm internally rotated beside her.");
+    else row(fc==="pa"?"ok":"warn", "Facing", fc==="pa"?3:1, 3, fc==="pa" ? "Facing the stand, turned toward her right: the humerus lies against the detector (PA mediolateral), and the image is flipped for display." : "Back to the stand (lateromedial) works, but the internally rotated arm sits further from the detector. Turning her to face the stand brings the humerus into contact.");
+    row(set.rot==="int"?"ok":"bad", "Arm rotation", set.rot==="int"?8:0, 8, set.rot==="int" ? "Internally rotated with the elbow flexed: epicondyles superimposed, the lesser tuberosity in profile medially. That's 90° to the AP." : "The arm wasn't rotated, so this is a second AP, not a lateral, as you can see on the image.");
   }
   var sid=set.sid||100;
   row(sid===100?"ok":"warn", "SID", sid===100?3:1, 3, sid===100 ? "100 cm." : sid+" cm: no benefit for a limb this close to the detector, and it needs more mAs."+(set.pos==="supine"&&sid>150?" The tube is near the ceiling over a table.":""));
@@ -1993,9 +2018,10 @@ function parseCommand(raw){
   var a=c.split(/\s+/), P=cur();
   var hit=cmdList().filter(function(k){ return CMD[k].k===a[0]; })[0];
   if(hit){ if(cmdEnabled(hit)) CMD[hit].go(); else log("Not yet — complete this step first.", "warn"); return; }
-  if(a[0]==="help"){ log("Commands: patient walk|trolley · next · back · expose · accept · repeat · position stand|sit|supine · arm sup|int · sid 100|150|180 · kv N · mas N · aec on|off · chambers l c r · grid on|off · breathe hold|still|none · field W H (cm) · palpate · restart", "sys"); return; }
+  if(a[0]==="help"){ log("Commands: patient walk|trolley · next · back · expose · accept · repeat · position stand|sit|supine · facing pa|ap · arm sup|int · sid 100|150|180 · kv N · mas N · aec on|off · chambers l c r · grid on|off · breathe hold|still|none · field W H (cm) · palpate · restart", "sys"); return; }
   if(a[0]==="patient" && S.phase==="req"){ setCase(a[1]); return; }
   if(a[0]==="position" && S.phase==="setup" && S.proj==="ap"){ if(["stand","sit","supine"].indexOf(a[1])>=0) setChoice("pos", a[1]); return; }
+  if(a[0]==="facing" && S.phase==="setup" && S.proj==="lat" && posNow()!=="supine"){ if(["pa","ap"].indexOf(a[1])>=0) setChoice("face", a[1]); return; }
   if(a[0]==="arm" && S.phase==="setup"){ if(["sup","int"].indexOf(a[1])>=0) setChoice("rot", a[1]); return; }
   if(a[0]==="kv" && S.phase==="expose"){ P.expo.kv=Math.max(45, Math.min(125, +a[1]||P.expo.kv)); render(); return; }
   if(a[0]==="mas" && S.phase==="expose"){ P.expo.mas=MAS_STEPS[nearestMas(+a[1]||P.expo.mas)]; P.expo.aec=false; render(); return; }

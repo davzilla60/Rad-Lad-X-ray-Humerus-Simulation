@@ -442,13 +442,19 @@ window.SCG_ROOM3D = function(THREE, host){
       AX = { f:new V3(CRW.x, fy - 0.05, CRW.z), c:new V3(CRW.x, TBUCKY + 0.002, CRW.z), u:new V3(1, 0, 0), v:new V3(0, 0, 1) };
       det.position.set(0, 1.25, 0);
     } else {
-      patient.quaternion.identity();
+      // back to the stand (AP), or facing it and turned ~43° toward her right so the humerus lies on the detector
+      // (PA mediolateral lateral: the forearm runs along the detector face, clear of it)
+      var pa = p.face === "pa";
+      patient.quaternion.identity(); patient.rotation.set(0, pa ? Math.PI + 0.75 : 0, 0);
       var drop = p.pos === "sit" ? -0.37 : 0;
-      patient.position.set(-crL.x, drop, DZ + 0.112);
-      DH = drop + crL.y;
-      CRW.set(0, DH, DZ + 0.112 + crL.z);
+      patient.position.set(0, drop, 0); patient.updateMatrixWorld(true);
+      var cw = patient.localToWorld(crL.clone());
+      var zOff = pa ? DZ + 0.055 - cw.z : DZ + 0.112;              // humerus ~5.5 cm from the face when facing it
+      patient.position.set(-cw.x, drop, zOff);
+      DH = cw.y;
+      CRW.set(0, DH, pa ? DZ + 0.055 : DZ + 0.112 + crL.z);
       det.position.set(0, DH, 0);
-      stool.position.set(-crL.x, 0, DZ + 0.16);
+      stool.position.set(-cw.x + (pa ? 0.06 : 0), 0, zOff + (pa ? -0.03 : 0.05));
       bucky.position.set(TX, TBUCKY, 0.3);
       head.rotation.x = 0;
       var zT = DZ + SID;
@@ -538,7 +544,7 @@ window.SCG_ROOM3D = function(THREE, host){
 
   return {
     setPose:function(p){
-      var old = POSE; POSE = Object.assign({}, POSE, p);
+      var old = POSE; POSE = Object.assign({ face:"ap" }, p);
       if(old.pos !== POSE.pos || old.rot !== POSE.rot) buildPose(POSE);
       place();
     },
