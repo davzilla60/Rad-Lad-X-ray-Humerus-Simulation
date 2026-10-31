@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X Marks the Spot — Humerus X-ray Simulator</title>
+<style>
+/* ============ MR-I READY (Scanogram engine) — scoped styles ============ */
+#scg-root *{box-sizing:border-box;margin:0;padding:0}
+#scg-root{
+  --bg:#0c0e0b;
+  --panel:#14180f;
+  --panel-2:#1b2015;
+  --line:#2c3a22;
+  --line-soft:#22301b;
+  --ink:#dfe7d6;
+  --ink-dim:#8ba07d;
+  --ink-faint:#5d6f52;
+  --accent:#5fe08a;
+  --accent-2:#8fbf6b;
+  --accent-ink:#0c1a0f;
+  --warn:#e8b45f;
+  --bad:#e06c5f;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --sans:"Trebuchet MS","Segoe UI",system-ui,-apple-system,sans-serif;
+  position:relative;
+  width:100%;
+  max-width:1040px;
+  box-sizing:border-box;
+  margin:0 auto;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--mono);
+  font-size:14px;
+  line-height:1.45;
+  border:1px solid var(--line);
+  border-radius:10px;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+#scg-root button{font-family:var(--mono);cursor:pointer}
+#scg-root .scg-hidden{display:none!important}
+
+/* ---- top bar ---- */
+#scg-root .scg-topbar{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 14px;
+  background:linear-gradient(180deg,#171c12,#11150d);
+  border-bottom:1px solid var(--line);
+}
+#scg-root .scg-mark{display:flex;align-items:center;gap:9px;min-width:0;overflow:hidden}
+#scg-root .scg-mark .scg-mark-ic{flex:none;height:26px;width:auto;display:block;background:#d3d5d3;border-radius:5px;padding:3px 5px}
+#scg-root .scg-mark-tx{display:flex;flex-direction:column;line-height:1.05;min-width:0}
+#scg-root .scg-mark-tx b{font-family:var(--sans);font-weight:700;letter-spacing:.14em;font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#scg-root .scg-mark-tx span{font-size:10px;letter-spacing:.22em;color:var(--ink-faint);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#scg-root .scg-topbar .scg-spacer{flex:1}
+#scg-root .scg-phasechip{
+  font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  padding:5px 10px;border:1px solid var(--line);border-radius:999px;
+  color:var(--accent);background:#101609;white-space:nowrap;
+}
+#scg-root .scg-phasechip::before{content:"● ";color:var(--accent);font-size:8px;vertical-align:2px}
+
+/* ---- main grid ---- */
+#scg-root .scg-body{display:grid;grid-template-columns:1fr 320px;gap:0}
+#scg-root .scg-stage{position:relative;background:#000;border-right:1px solid var(--line)}
+#scg-root .scg-viewport{
+  position:relative;width:100%;aspect-ratio:1/1;max-height:min(70vh,600px);background:#000;
+  overflow:hidden;user-select:none;touch-action:none;
+}
+#scg-root .scg-img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:contain;object-position:center;
+  image-rendering:auto;transition:opacity .35s ease;
+}
+#scg-root #scgImgB{opacity:0}
+
+/* reticle */
+#scg-root .scg-reticle{position:absolute;inset:0;pointer-events:none;color:#7bd39a;opacity:.5;mix-blend-mode:screen}
+#scg-root .scg-reticle line{stroke:currentColor;stroke-width:1;stroke-dasharray:3 6}
+#scg-root .scg-reticle path{stroke:currentColor;stroke-width:1.4;fill:none}
+
+/* sweep line */
+#scg-root .scg-sweep{
+  position:absolute;left:0;right:0;height:2px;top:0;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  box-shadow:0 0 16px 3px rgba(95,224,138,.55);
+  opacity:0;
+}
+#scg-root .scg-stage.is-scan .scg-sweep{opacity:1;animation:scg-sweepmove 2.2s linear}
+@keyframes scg-sweepmove{from{top:0}to{top:100%}}
+#scg-root .scg-stage.is-scan .scg-img{clip-path:inset(0 0 100% 0);animation:scg-reveal 2.2s linear forwards}
+@keyframes scg-reveal{to{clip-path:inset(0 0 0 0)}}
+
+/* acquisition noise band */
+#scg-root .scg-acq{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:14px;
+  background:repeating-linear-gradient(0deg,#050805 0 2px,#0b0f0a 2px 4px);
+}
+#scg-root .scg-acq .scg-acq-band{
+  position:absolute;left:0;right:0;height:22%;
+  background:linear-gradient(180deg,transparent,rgba(95,224,138,.16),rgba(95,224,138,.32),rgba(95,224,138,.16),transparent);
+  border-top:1px solid rgba(95,224,138,.5);border-bottom:1px solid rgba(95,224,138,.5);
+  animation:scg-acqband 1.05s linear infinite;
+}
+@keyframes scg-acqband{from{top:-24%}to{top:102%}}
+#scg-root .scg-acq h4{font-family:var(--sans);letter-spacing:.34em;font-size:15px;color:var(--accent);z-index:2;text-align:center}
+#scg-root .scg-acq .scg-acq-num{font-size:12px;color:var(--ink-dim);letter-spacing:.12em;z-index:2;text-align:center;padding:0 12px}
+#scg-root .scg-acq .scg-acq-big{font-family:var(--sans);font-size:44px;color:var(--ink);z-index:2;letter-spacing:.06em}
+
+/* viewport overlays */
+#scg-root .scg-vp-tl,#scg-root .scg-vp-bl,#scg-root .scg-vp-br{
+  position:absolute;font-size:10.5px;letter-spacing:.08em;color:#9fe7b8;
+  text-shadow:0 0 6px rgba(0,0,0,.9);pointer-events:none;white-space:pre;line-height:1.5;z-index:8;
+}
+#scg-root .scg-vp-tl{top:9px;left:11px}
+#scg-root .scg-vp-bl{bottom:9px;left:11px;color:var(--ink-dim)}
+#scg-root .scg-vp-br{bottom:9px;right:11px;color:var(--ink-dim);text-align:right}
+
+/* lateral scanogram picture-in-picture */
+#scg-root .scg-pip{
+  position:absolute;top:12px;right:12px;width:30%;max-width:150px;
+  border:1px solid var(--line);background:#000;overflow:hidden;z-index:7;
+  box-shadow:0 2px 12px rgba(0,0,0,.6);
+}
+#scg-root .scg-pip img{display:block;width:100%;height:auto;opacity:.92}
+#scg-root .scg-pip .scg-pip-line{
+  position:absolute;left:0;right:0;height:0;border-top:1.5px solid var(--warn);
+  box-shadow:0 0 6px rgba(232,180,95,.5);
+}
+#scg-root .scg-pip.is-on .scg-pip-line{border-top-color:var(--accent)}
+#scg-root .scg-pip span{
+  position:absolute;left:4px;top:3px;font-size:9px;letter-spacing:.14em;color:var(--ink-dim);
+  text-shadow:0 0 4px #000;
+}
+
+/* watermark */
+#scg-root .scg-watermark{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;z-index:7;
+}
+#scg-root .scg-watermark b{
+  font-family:var(--sans);font-weight:700;letter-spacing:.22em;font-size:clamp(14px,3vw,22px);
+  color:rgba(224,108,95,.9);border:2px solid rgba(224,108,95,.65);
+  padding:8px 18px;transform:rotate(-14deg);text-align:center;
+  background:rgba(10,4,4,.28);
+}
+
+/* ---- right rail ---- */
+#scg-root .scg-rail{display:flex;flex-direction:column;background:var(--panel);min-width:0}
+#scg-root .scg-rail-head{padding:11px 14px 9px;border-bottom:1px solid var(--line)}
+#scg-root .scg-rail-head h3{font-family:var(--sans);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink)}
+#scg-root .scg-rail-head p{font-size:10.5px;color:var(--ink-faint);letter-spacing:.06em;margin-top:2px}
+#scg-root .scg-rail-body{padding:12px 14px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;flex:1}
+
+#scg-root .scg-readout{border:1px solid var(--line-soft);border-radius:7px;background:var(--panel-2);padding:10px 11px}
+#scg-root .scg-readout .scg-ro-lab{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint)}
+#scg-root .scg-readout .scg-ro-val{font-size:26px;font-weight:600;color:var(--accent);letter-spacing:.02em;line-height:1.15}
+#scg-root .scg-readout .scg-ro-val small{font-size:12px;color:var(--ink-dim);font-weight:400}
+#scg-root .scg-readout.is-warn .scg-ro-val{color:var(--warn)}
+
+#scg-root .scg-kv{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px dotted var(--line-soft)}
+#scg-root .scg-kv:last-child{border-bottom:0}
+#scg-root .scg-kv span:first-child{color:var(--ink-faint);letter-spacing:.08em}
+#scg-root .scg-kv span:last-child{color:var(--ink);text-align:right}
+#scg-root .scg-kv b{color:var(--accent)}
+
+#scg-root .scg-tdc{width:100%;height:110px;display:block;background:#0a0d08;border:1px solid var(--line-soft);border-radius:6px}
+
+#scg-root .scg-hint{font-size:11px;color:var(--ink-dim);letter-spacing:.03em}
+#scg-root .scg-hint.is-ok{color:var(--accent)}
+#scg-root .scg-hint.is-warn{color:var(--warn)}
+
+#scg-root .scg-size{display:flex;align-items:center;gap:8px}
+#scg-root .scg-size input[type=range]{flex:1;accent-color:var(--accent)}
+#scg-root .scg-size output{font-size:12px;color:var(--accent);min-width:52px;text-align:right}
+
+/* checklist (patient setup) */
+#scg-root .scg-check{display:flex;flex-direction:column;gap:6px}
+#scg-root .scg-check div{display:flex;gap:8px;font-size:11px;color:var(--ink-faint);line-height:1.35;transition:color .3s}
+#scg-root .scg-check div i{font-style:normal;flex:none;width:14px;color:var(--line)}
+#scg-root .scg-check div.is-done{color:var(--ink)}
+#scg-root .scg-check div.is-done i{color:var(--accent)}
+
+/* method chooser */
+#scg-root .scg-choice{display:flex;flex-direction:column;gap:8px}
+#scg-root .scg-choice button{
+  text-align:left;padding:10px 11px;border:1px solid var(--line);border-radius:7px;background:var(--panel-2);color:var(--ink);
+  font-size:12px;letter-spacing:.05em;transition:border-color .15s,background .15s;
+}
+#scg-root .scg-choice button b{display:block;color:var(--accent);font-size:12.5px;letter-spacing:.1em;margin-bottom:3px}
+#scg-root .scg-choice button span{color:var(--ink-dim);font-size:10.5px;line-height:1.4;display:block}
+#scg-root .scg-choice button:hover{border-color:var(--accent);background:#10200f}
+
+/* command buttons */
+#scg-root .scg-cmds{display:flex;flex-direction:column;gap:6px;padding:10px 14px;border-top:1px solid var(--line)}
+#scg-root .scg-btn{
+  display:flex;align-items:center;gap:8px;width:100%;
+  padding:8px 11px;border:1px solid var(--line);border-radius:6px;
+  background:var(--panel-2);color:var(--ink);font-size:12px;letter-spacing:.06em;
+  text-align:left;transition:border-color .15s,background .15s,color .15s;
+}
+#scg-root .scg-btn .scg-key{
+  font-size:9.5px;color:var(--ink-faint);border:1px solid var(--line);border-radius:3px;
+  padding:1px 4px;margin-left:auto;letter-spacing:.05em;
+}
+#scg-root .scg-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+#scg-root .scg-btn.is-primary{border-color:var(--accent);color:var(--accent);background:#10200f}
+#scg-root .scg-btn.is-primary:hover:not(:disabled){background:var(--accent);color:var(--accent-ink)}
+#scg-root .scg-btn.is-pulse{animation:scg-btnpulse 1.3s ease-in-out infinite}
+@keyframes scg-btnpulse{0%,100%{box-shadow:0 0 0 0 rgba(95,224,138,.0)}50%{box-shadow:0 0 0 3px rgba(95,224,138,.25)}}
+#scg-root .scg-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* command input */
+#scg-root .scg-cli{display:flex;align-items:center;gap:7px;padding:9px 14px;border-top:1px solid var(--line);background:#0a0d07}
+#scg-root .scg-cli::before{content:"scanogram $";color:var(--accent);font-size:11px;letter-spacing:.05em;flex:none}
+#scg-root .scg-cli input{
+  flex:1;background:transparent;border:0;outline:0;color:var(--ink);
+  font-family:var(--mono);font-size:12px;letter-spacing:.04em;min-width:0;
+}
+#scg-root .scg-cli input::placeholder{color:var(--ink-faint)}
+
+/* console log */
+#scg-root .scg-log{
+  height:104px;overflow-y:auto;padding:8px 14px;background:#080b06;
+  border-top:1px solid var(--line);font-size:11px;line-height:1.6;color:var(--ink-dim);
+  grid-column:1/-1;
+}
+#scg-root .scg-log .scg-l-cmd{color:var(--accent)}
+#scg-root .scg-log .scg-l-ok{color:var(--accent-2)}
+#scg-root .scg-log .scg-l-warn{color:var(--warn)}
+#scg-root .scg-log .scg-l-bad{color:var(--bad)}
+#scg-root .scg-log .scg-l-sys{color:var(--ink-faint)}
+
+/* ---- title screen ---- */
+#scg-root .scg-title{
+  position:absolute;inset:0;z-index:20;background:
+    radial-gradient(120% 80% at 50% 0%,#18201300,#0b0e08 70%),
+    linear-gradient(180deg,#10140c,#0a0d07);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:32px 24px;gap:6px;overflow-y:auto;
+}
+#scg-root .scg-title .scg-logo-plate{
+  background:#d3d5d3;border-radius:12px;padding:14px 26px 10px;margin-bottom:16px;
+  box-shadow:0 2px 24px rgba(0,0,0,.35);
+}
+#scg-root .scg-title .scg-logo-plate img{display:block;width:clamp(180px,42vw,264px);height:auto}
+#scg-root .scg-title h1{
+  font-family:var(--sans);font-weight:700;letter-spacing:.16em;
+  font-size:clamp(26px,5vw,40px);color:var(--ink);
+}
+#scg-root .scg-title h1 .scg-the{display:block;font-size:.4em;letter-spacing:.5em;color:var(--accent);margin-bottom:.35em}
+#scg-root .scg-title .scg-sub{font-size:12.5px;letter-spacing:.14em;color:var(--ink-dim);max-width:46ch}
+#scg-root .scg-title .scg-start{
+  margin-top:22px;padding:12px 26px;border:1px solid var(--accent);border-radius:7px;
+  background:#10200f;color:var(--accent);font-size:13px;letter-spacing:.2em;text-transform:uppercase;
+  transition:background .16s,color .16s;
+}
+#scg-root .scg-title .scg-start:hover{background:var(--accent);color:var(--accent-ink)}
+#scg-root .scg-title .scg-fine{margin-top:16px;font-size:10px;letter-spacing:.06em;color:var(--ink-faint);max-width:60ch}
+#scg-root .scg-title .scg-fine a{color:var(--ink-dim)}
+#scg-root .scg-title .scg-scouts{display:flex;gap:10px;margin-top:20px;opacity:.62}
+#scg-root .scg-title .scg-scouts img{height:84px;width:auto;border:1px solid var(--line);border-radius:4px}
+
+/* ---- result screen ---- */
+#scg-root .scg-result{grid-column:1/-1;background:var(--panel);border-top:1px solid var(--line);padding:16px;display:grid;grid-template-columns:1fr 320px;gap:16px}
+#scg-root .scg-result h2{font-family:var(--sans);font-size:15px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:3px}
+#scg-root .scg-result h2.is-bad{color:var(--warn)}
+#scg-root .scg-result .scg-cap{font-size:11px;color:var(--ink-dim);letter-spacing:.04em;margin-bottom:12px;max-width:64ch}
+#scg-root .scg-hero{position:relative;background:#000;border:1px solid var(--line);border-radius:8px;overflow:hidden;aspect-ratio:1/1}
+#scg-root .scg-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#scg-root .scg-hero .scg-hero-lab{position:absolute;left:10px;top:9px;font-size:10px;letter-spacing:.16em;color:var(--accent);text-shadow:0 0 6px #000;white-space:pre}
+#scg-root .scg-hero .scg-hero-hu{position:absolute;right:10px;bottom:9px;font-size:10px;letter-spacing:.1em;color:var(--ink-dim);text-shadow:0 0 6px #000;text-align:right;white-space:pre}
+#scg-root .scg-debrief{display:flex;flex-direction:column;gap:9px}
+#scg-root .scg-grade{
+  display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:8px;
+  background:var(--panel-2);padding:10px 12px;
+}
+#scg-root .scg-grade b{font-family:var(--sans);font-size:38px;color:var(--accent);line-height:1}
+#scg-root .scg-grade.is-warn b{color:var(--warn)}
+#scg-root .scg-grade.is-bad b{color:var(--bad)}
+#scg-root .scg-grade span{font-size:11px;color:var(--ink-dim);letter-spacing:.06em}
+#scg-root .scg-bar{height:6px;border-radius:3px;background:#0a0d08;border:1px solid var(--line-soft);overflow:hidden;margin-top:5px}
+#scg-root .scg-bar i{display:block;height:100%;background:var(--accent)}
+#scg-root .scg-drow{font-size:11.5px;display:flex;gap:8px;align-items:flex-start;border-bottom:1px dotted var(--line-soft);padding-bottom:7px}
+#scg-root .scg-drow i{font-style:normal;flex:none;width:16px;text-align:center}
+#scg-root .scg-drow .scg-d-ok{color:var(--accent)}
+#scg-root .scg-drow .scg-d-warn{color:var(--warn)}
+#scg-root .scg-drow .scg-d-bad{color:var(--bad)}
+#scg-root .scg-drow b{color:var(--ink);font-weight:600;letter-spacing:.04em}
+#scg-root .scg-drow em{font-style:normal;float:right;color:var(--ink-dim);margin-left:8px}
+#scg-root .scg-drow p{color:var(--ink-dim);margin-top:1px}
+#scg-root .scg-again{
+  margin-top:4px;padding:11px 16px;border:1px solid var(--accent);border-radius:7px;
+  background:#10200f;color:var(--accent);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+}
+#scg-root .scg-again:hover{background:var(--accent);color:var(--accent-ink)}
+#scg-root .scg-credits{grid-column:1/-1;font-size:10px;line-height:1.55;color:var(--ink-faint);border-top:1px dotted var(--line-soft);padding-top:10px;letter-spacing:.02em}
+#scg-root .scg-credits b{color:var(--ink-dim);font-weight:600}
+#scg-root .scg-credits a{color:var(--ink-dim)}
+
+/* stack scroller in result stage */
+#scg-root .scg-stack-ui{position:absolute;right:10px;top:10px;bottom:10px;width:26px;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;z-index:8}
+#scg-root .scg-stack-ui input{writing-mode:vertical-lr;direction:ltr;width:22px;flex:1;accent-color:var(--accent);pointer-events:auto}
+#scg-root .scg-winbtns{position:absolute;left:10px;bottom:34px;display:flex;gap:5px;z-index:8}
+#scg-root .scg-winbtns button{font-size:9.5px;letter-spacing:.1em;padding:3px 7px;border:1px solid var(--line);border-radius:4px;background:rgba(10,14,8,.7);color:var(--ink-dim)}
+#scg-root .scg-winbtns button.is-on{border-color:var(--accent);color:var(--accent)}
+#scg-root .scg-winbtns .scg-pebtn{margin-left:6px;color:#f0a49e;border-color:rgba(224,108,95,.5)}
+#scg-root .scg-winbtns .scg-pebtn.is-on{color:#fff;background:rgba(224,108,95,.35);border-color:var(--bad)}
+
+/* scan-range box on the scanogram */
+#scg-root .scg-rangebox{
+  position:absolute;left:0;width:100%;z-index:6;
+  background:rgba(95,224,138,.10);
+  border-top:2px solid var(--accent);border-bottom:2px solid var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(95,224,138,.25);
+  cursor:move;touch-action:none;
+}
+#scg-root .scg-rangebox.is-off{
+  background:rgba(232,180,95,.10);border-color:var(--warn);
+  box-shadow:inset 0 0 0 1px rgba(232,180,95,.3);
+}
+#scg-root .scg-rh{position:absolute;left:0;right:0;height:0;cursor:ns-resize;touch-action:none}
+#scg-root .scg-rh::before{content:"";position:absolute;left:0;right:0;top:-10px;height:20px}
+#scg-root .scg-rh-top{top:0}
+#scg-root .scg-rh-bot{bottom:0}
+#scg-root .scg-rh::after{
+  content:"";position:absolute;left:50%;width:34px;height:4px;transform:translateX(-50%);
+  background:var(--accent);border-radius:2px;
+}
+#scg-root .scg-rh-top::after{top:-2px}
+#scg-root .scg-rh-bot::after{bottom:-2px}
+#scg-root .scg-rangebox.is-off .scg-rh::after{background:var(--warn)}
+#scg-root .scg-rh span{
+  position:absolute;left:8px;font-size:10px;letter-spacing:.08em;white-space:nowrap;
+  background:rgba(6,10,5,.82);padding:2px 6px;border:1px solid rgba(95,224,138,.5);border-radius:3px;
+  color:var(--accent);
+}
+#scg-root .scg-rangebox.is-off .scg-rh span{color:var(--warn);border-color:rgba(232,180,95,.5)}
+#scg-root .scg-rh-top span{top:3px}
+#scg-root .scg-rh-bot span{bottom:3px}
+#scg-root .scg-rangebox .scg-range-cap{left:auto!important;right:8px;
+  position:absolute;left:8px;top:50%;transform:translateY(-50%);
+  font-size:9.5px;letter-spacing:.16em;color:rgba(95,224,138,.8);pointer-events:none;
+}
+#scg-root .scg-rangemask{position:absolute;left:0;width:100%;background:rgba(4,6,4,.6);z-index:5;pointer-events:none}
+#scg-root .scg-pip-box{position:absolute;left:0;right:0;border-top:1.5px solid var(--accent);border-bottom:1.5px solid var(--accent);background:rgba(95,224,138,.12)}
+#scg-root .scg-pip.is-off .scg-pip-box{border-color:var(--warn);background:rgba(232,180,95,.12)}
+
+/* ---- patient set-up scene (prone, head first, arm overhead) ---- */
+#scg-root .scg-room{position:absolute;inset:0;z-index:4;background:radial-gradient(110% 70% at 50% 35%,#1b2218,#0a0c09 75%)}
+#scg-root .scg-room svg{position:absolute;inset:0;width:100%;height:100%}
+#scg-root .scg-room3d{position:absolute;inset:0;display:none}
+#scg-root .scg-room.is-3d .scg-room3d{display:block}
+#scg-root .scg-room3d::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 95% at 50% 45%,transparent 60%,rgba(0,0,0,.28))}
+#scg-root .scg-room.is-3d .scg-roomsvg{display:none}
+#scg-root .scg-roomcap{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:2;display:none;
+  text-align:center;padding:7px 14px;border-radius:8px;background:rgba(10,14,9,.72);backdrop-filter:blur(3px);max-width:92%}
+#scg-root .scg-room.is-3d .scg-roomcap{display:block}
+#scg-root .scg-roomcap b{display:block;font-family:var(--sans);font-size:12px;letter-spacing:.24em;color:var(--ink)}
+#scg-root .scg-roomcap span{display:block;font-size:10.5px;color:#9fe7b8;letter-spacing:.04em;margin-top:2px}
+#scg-root .scg-room .scg-couch{transition:transform 4.2s cubic-bezier(.45,.05,.25,1)}
+#scg-root .scg-room.is-in .scg-couch{transform:translateX(70px)}
+#scg-root .scg-room .scg-laser{opacity:0;transition:opacity .6s ease 4.1s}
+#scg-root .scg-room.is-in .scg-laser{opacity:1}
+#scg-root .scg-room .scg-led{animation:scg-ledblink 1.6s ease-in-out infinite}
+@keyframes scg-ledblink{0%,100%{opacity:.35}50%{opacity:1}}
+
+/* responsive */
+@media (max-width:780px){
+  #scg-root .scg-body{grid-template-columns:1fr}
+  #scg-root .scg-stage{border-right:0;border-bottom:1px solid var(--line)}
+  #scg-root .scg-result{grid-template-columns:1fr}
+  #scg-root .scg-rail-body{max-height:360px}
+}
+@media (max-width:470px){
+  #scg-root{font-size:13px}
+  #scg-root .scg-mark-tx span{display:none}
+  #scg-root .scg-phasechip{font-size:9px;letter-spacing:.1em;padding:4px 7px}
+  #scg-root .scg-viewport{max-height:74vh}
+  #scg-root .scg-log{height:84px}
+  #scg-root .scg-roomcap{top:8px;padding:5px 9px}
+  #scg-root .scg-roomcap b{font-size:10px;letter-spacing:.1em}
+  #scg-root .scg-roomcap span{font-size:9.5px}
+}
+
+/* ===== marker ===== */
+#scg-root .scg-ach-wrap{
+  grid-column:1/-1;display:flex;flex-direction:column;align-items:center;
+  padding:16px 14px 6px;background:var(--panel);border-top:1px solid var(--line);
+}
+#scg-root .scg-ach{
+  width:100%;max-width:440px;position:relative;
+  background:linear-gradient(135deg,#141a12 0%,#20281c 100%);
+  border-left:5px solid var(--accent);border-radius:8px;
+  padding:16px 18px;display:flex;align-items:center;gap:16px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);
+  opacity:0;transform:translateX(90px);
+}
+#scg-root .scg-ach-logo{
+  width:40px;height:40px;object-fit:contain;flex-shrink:0;border-radius:5px;
+  background:#d3d5d3;padding:3px;opacity:0;
+}
+#scg-root .scg-ach-marker{
+  width:52px;height:52px;flex-shrink:0;position:relative;
+  background:linear-gradient(145deg,var(--accent),#3fbf6a);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 12px rgba(95,224,128,.45);
+  opacity:0;transform:translateY(-70px) scale(1.7) rotate(-12deg);
+}
+#scg-root .scg-ach-marker::after{               
+  content:'S';font-family:var(--sans);font-weight:800;font-size:21px;letter-spacing:.02em;color:#0c1a0f;line-height:1;
+}
+#scg-root .scg-ach-marker::before{
+  content:'';position:absolute;inset:-8px;border-radius:14px;
+  background:radial-gradient(circle,rgba(95,224,128,.5) 0%,transparent 70%);opacity:0;
+}
+#scg-root .scg-ach-text{flex:1;min-width:0;opacity:0;transform:translateY(8px)}
+#scg-root .scg-ach-label{font-size:11px;font-weight:600;letter-spacing:1.3px;color:var(--accent);text-transform:uppercase;margin-bottom:3px;font-family:var(--sans)}
+#scg-root .scg-ach-title{font-size:19px;font-weight:700;color:#f4f7f2;line-height:1.15;font-family:var(--sans)}
+#scg-root .scg-ach-sub{font-size:12px;color:var(--ink-dim);margin-top:3px}
+#scg-root .scg-ach-share{
+  margin-top:14px;text-align:center;font-size:13px;color:var(--ink-dim);
+  opacity:0;transform:translateY(10px);
+}
+#scg-root .scg-ach-share strong{color:var(--accent)}
+#scg-root .scg-ach-replay{
+  position:absolute;top:6px;right:6px;background:rgba(255,255,255,.07);border:0;
+  color:var(--ink-dim);font-size:11px;padding:4px 9px;border-radius:4px;cursor:pointer;
+  opacity:0;transition:opacity .25s,background .25s,color .25s;font-family:var(--mono);
+}
+#scg-root .scg-ach:hover .scg-ach-replay{opacity:1}
+#scg-root .scg-ach-replay:hover{background:rgba(255,255,255,.14);color:#e2e8f0}
+#scg-root .scg-ach-wrap.is-playing .scg-ach{ animation:scg-ach-slide .7s cubic-bezier(.22,1,.36,1) .2s forwards; }
+#scg-root .scg-ach-wrap.is-playing .scg-ach-logo{ animation:scg-ach-fade .5s ease .9s forwards; }
+#scg-root .scg-ach-wrap.is-playing .scg-ach-marker{ animation:scg-ach-stamp .85s cubic-bezier(.34,1.4,.64,1) .55s forwards; }
+#scg-root .scg-ach-wrap.is-playing .scg-ach-marker::before{ animation:scg-ach-glow .6s ease 1.15s forwards; }
+#scg-root .scg-ach-wrap.is-playing .scg-ach-text{ animation:scg-ach-textin .5s ease 1.25s forwards; }
+#scg-root .scg-ach-wrap.is-playing .scg-ach-share{ animation:scg-ach-up .55s ease 1.7s forwards; }
+@keyframes scg-ach-slide{to{opacity:1;transform:translateX(0)}}
+@keyframes scg-ach-fade{to{opacity:1}}
+@keyframes scg-ach-textin{to{opacity:1;transform:translateY(0)}}
+@keyframes scg-ach-up{to{opacity:1;transform:translateY(0)}}
+@keyframes scg-ach-stamp{
+  0%{opacity:0;transform:translateY(-70px) scale(1.7) rotate(-12deg)}
+  55%{opacity:1;transform:translateY(10px) scale(.92) rotate(4deg)}
+  75%{transform:translateY(-5px) scale(1.06) rotate(-2deg)}
+  100%{opacity:1;transform:translateY(0) scale(1) rotate(0)}
+}
+@keyframes scg-ach-glow{
+  0%{opacity:0;transform:scale(.6)}40%{opacity:1;transform:scale(1.1)}100%{opacity:0;transform:scale(1.4)}
+}
+@media (prefers-reduced-motion:reduce){
+  #scg-root .scg-ach,#scg-root .scg-ach-logo,#scg-root .scg-ach-marker,
+  #scg-root .scg-ach-text,#scg-root .scg-ach-share{opacity:1!important;transform:none!important;animation:none!important}
+  #scg-root .scg-room .scg-couch{transition-duration:.01s}
+}
+#scg-root .scg-fov{
+  position:absolute;z-index:6;
+  background:rgba(95,224,138,.07);
+  border:2px solid var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(95,224,138,.25),0 0 12px rgba(95,224,138,.15);
+  cursor:move;touch-action:none;
+}
+#scg-root .scg-fov.is-off{
+  background:rgba(232,180,95,.08);border-color:var(--warn);
+  box-shadow:inset 0 0 0 1px rgba(232,180,95,.3);
+}
+#scg-root .scg-fov-cap{
+  position:absolute;left:4px;top:3px;font-size:9px;letter-spacing:.14em;
+  color:rgba(95,224,138,.9);pointer-events:none;text-shadow:0 0 4px #000;white-space:nowrap;
+}
+#scg-root .scg-fov.is-off .scg-fov-cap{color:var(--warn)}
+#scg-root .scg-eh{position:absolute;touch-action:none}
+#scg-root .scg-eh-top,#scg-root .scg-eh-bot{left:0;right:0;height:0;cursor:ns-resize}
+#scg-root .scg-eh-left,#scg-root .scg-eh-right{top:0;bottom:0;width:0;cursor:ew-resize}
+#scg-root .scg-eh-top{top:0}#scg-root .scg-eh-bot{bottom:0}
+#scg-root .scg-eh-left{left:0}#scg-root .scg-eh-right{right:0}
+#scg-root .scg-eh-top::before,#scg-root .scg-eh-bot::before{content:"";position:absolute;left:0;right:0;top:-11px;height:22px}
+#scg-root .scg-eh-left::before,#scg-root .scg-eh-right::before{content:"";position:absolute;top:0;bottom:0;left:-11px;width:22px}
+#scg-root .scg-eh::after{content:"";position:absolute;background:var(--accent);border-radius:2px}
+#scg-root .scg-eh-top::after,#scg-root .scg-eh-bot::after{left:50%;width:34px;height:4px;transform:translateX(-50%)}
+#scg-root .scg-eh-left::after,#scg-root .scg-eh-right::after{top:50%;height:34px;width:4px;transform:translateY(-50%)}
+#scg-root .scg-eh-top::after{top:-2px}#scg-root .scg-eh-bot::after{bottom:-2px}
+#scg-root .scg-eh-left::after{left:-2px}#scg-root .scg-eh-right::after{right:-2px}
+#scg-root .scg-fov.is-off .scg-eh::after{background:var(--warn)}
+#scg-root .scg-fovmask{position:absolute;background:rgba(4,6,4,.62);z-index:5;pointer-events:none}
+
+/* DFOV box edge labels, pip box, orientation labels, recon segmented buttons */
+#scg-root .scg-eh-tag{position:absolute;left:8px;font-size:10px;letter-spacing:.08em;white-space:nowrap;pointer-events:none;
+  background:rgba(6,10,5,.82);padding:2px 6px;border:1px solid rgba(95,224,138,.5);border-radius:3px;color:var(--accent)}
+#scg-root .scg-eh-top .scg-eh-tag{top:4px}
+#scg-root .scg-eh-bot .scg-eh-tag{bottom:4px}
+#scg-root .scg-fov.is-off .scg-eh-tag{color:var(--warn);border-color:rgba(232,180,95,.5)}
+#scg-root .scg-fov-cap{left:0;top:-17px}
+#scg-root .scg-pip-box{right:auto;border:1.5px solid var(--accent)}
+#scg-root .scg-pip.is-off .scg-pip-box{border-color:var(--warn)}
+#scg-root .scg-orient{position:absolute;inset:0;pointer-events:none;z-index:7}
+#scg-root .scg-orient i{position:absolute;font-style:normal;font-size:9.5px;letter-spacing:.16em;color:rgba(159,231,184,.75);text-shadow:0 0 5px #000}
+#scg-root .scg-orient .o-t{top:30px;left:50%;transform:translateX(-50%)}
+#scg-root .scg-orient .o-b{bottom:58px;left:50%;transform:translateX(-50%)}
+#scg-root .scg-orient .o-l{left:8px;top:50%;transform:translateY(-50%)}
+#scg-root .scg-orient .o-r{right:40px;top:50%;transform:translateY(-50%)}
+#scg-root .scg-wsep{width:6px}
+#scg-root .scg-choice button.is-on{border-color:var(--accent);background:#10200f;box-shadow:inset 3px 0 0 var(--accent)}
+#scg-root .scg-stage.no-ret .scg-reticle{display:none}
+#scg-root .scg-seg{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+#scg-root .scg-seg span{font-size:10px;letter-spacing:.14em;color:var(--ink-faint);width:52px}
+#scg-root .scg-seg button{flex:1;font-size:10.5px;letter-spacing:.08em;padding:7px 6px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);color:var(--ink-dim)}
+#scg-root .scg-seg button:hover{border-color:var(--accent);color:var(--accent)}
+#scg-root .scg-seg button.is-on{border-color:var(--accent);color:var(--accent-ink);background:var(--accent)}
+
+/* ================= X MARKS THE SPOT · HUMERUS X-RAY additions (shared with the chest sim) ================= */
+#scg-root .scg-cli::before{content:"x-ray $"}
+#scg-root .scg-ach-marker::after{content:'H'}
+#scg-root .xr-lf{position:absolute;inset:0;z-index:3;background:#0d0f0c}
+#scg-root .xr-lf svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;user-select:none}
+#scg-root .xr-view{position:absolute;inset:0;z-index:3;background:#000}
+#scg-root .xr-view canvas{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%}
+#scg-root .xr-tools{position:absolute;left:8px;bottom:8px;z-index:6;display:flex;gap:5px;flex-wrap:wrap;max-width:calc(100% - 16px)}
+#scg-root .xr-tools button{font-size:9.5px;letter-spacing:.1em;padding:4px 8px;border:1px solid var(--line);border-radius:4px;background:rgba(10,14,8,.8);color:var(--ink-dim)}
+#scg-root .xr-tools button.is-on{border-color:var(--accent);color:var(--accent)}
+#scg-root .xr-tools button:hover{border-color:var(--accent);color:var(--accent)}
+#scg-root .xr-mk{cursor:grab}
+#scg-root .xr-mk:active{cursor:grabbing}
+#scg-root .xr-req{border:1px solid var(--line);border-radius:7px;background:#f3f1ea;color:#23261f;padding:10px 11px;font-family:var(--sans);font-size:11.5px;line-height:1.45}
+#scg-root .xr-req b{display:block;font-size:10px;letter-spacing:.18em;color:#6b6f63;margin-bottom:4px}
+#scg-root .xr-req p{margin-top:3px}
+#scg-root .xr-req i{font-style:normal;color:#8a3b2f;font-weight:700}
+#scg-root .xr-ticks{display:flex;flex-direction:column;gap:5px}
+#scg-root .xr-ticks label{display:flex;gap:8px;align-items:flex-start;font-size:11px;color:var(--ink-dim);line-height:1.35;cursor:pointer;padding:6px 8px;border:1px solid var(--line-soft);border-radius:6px;background:#10140c}
+#scg-root .xr-ticks label.is-on{border-color:rgba(95,224,138,.45);color:var(--ink)}
+#scg-root .xr-ticks input{accent-color:var(--accent);margin-top:2px;flex:none}
+#scg-root .xr-grp{display:flex;flex-direction:column;gap:6px}
+#scg-root .xr-grp>span{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint)}
+#scg-root .xr-grp .scg-choice button{padding:8px 10px}
+#scg-root .xr-grp .scg-choice button b{font-size:11.5px;margin-bottom:1px}
+#scg-root .xr-slider{display:flex;align-items:center;gap:8px}
+#scg-root .xr-slider span{font-size:10px;letter-spacing:.14em;color:var(--ink-faint);width:44px}
+#scg-root .xr-slider input{flex:1;accent-color:var(--accent);min-width:0}
+#scg-root .xr-slider output{font-size:13px;color:var(--accent);min-width:64px;text-align:right}
+#scg-root .xr-aec{display:flex;justify-content:center;gap:0;padding:4px 0}
+#scg-root .xr-aec svg{width:132px;height:132px}
+#scg-root .xr-aec rect.ch{fill:rgba(95,224,138,.06);stroke:var(--ink-faint);stroke-width:1.5;cursor:pointer}
+#scg-root .xr-aec rect.ch.is-on{fill:rgba(95,224,138,.35);stroke:var(--accent)}
+#scg-root .xr-aec text{font-family:var(--mono);font-size:9px;fill:var(--ink-dim);pointer-events:none}
+#scg-root .xr-vpinfo{position:absolute;left:10px;top:9px;z-index:6;font-size:10.5px;letter-spacing:.08em;color:#9fe7b8;text-shadow:0 0 6px #000;white-space:pre;line-height:1.5;pointer-events:none}
+#scg-root .xr-vpinfo2{position:absolute;right:10px;bottom:9px;z-index:6;font-size:10.5px;letter-spacing:.08em;color:var(--ink-dim);text-shadow:0 0 6px #000;white-space:pre;line-height:1.5;text-align:right;pointer-events:none}
+#scg-root .xr-heroes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#scg-root .xr-heroes .scg-hero{aspect-ratio:auto;min-height:260px}
+#scg-root .xr-heroes canvas{display:block;width:100%;height:auto}
+#scg-root .xr-sub{font-family:var(--sans);font-size:12px;letter-spacing:.18em;color:var(--ink);margin:12px 0 6px;text-transform:uppercase}
+#scg-root .xr-crit{width:100%;border-collapse:collapse;font-size:10.5px}
+#scg-root .xr-crit td{vertical-align:top;color:var(--ink-dim);padding:5px 6px;border-bottom:1px dotted var(--line-soft);line-height:1.4}
+#scg-root .xr-crit td:first-child{width:18px;text-align:center}
+#scg-root .xr-crit td b{color:var(--ink)}
+#scg-root .xr-flash{position:absolute;inset:0;z-index:9;pointer-events:none;background:radial-gradient(circle at 50% 45%,rgba(200,230,255,.55),rgba(200,230,255,0) 70%);opacity:0}
+#scg-root .xr-flash.is-on{animation:xr-flash .7s ease-out}
+@keyframes xr-flash{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
+#scg-root .xr-hold{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9;padding:12px 18px;border-radius:9px;background:rgba(8,12,7,.85);
+  border:1px solid var(--line);font-family:var(--sans);letter-spacing:.2em;color:var(--ink);font-size:14px;text-align:center;pointer-events:none}
+#scg-root .xr-hold small{display:block;font-family:var(--mono);letter-spacing:.06em;font-size:11px;color:var(--ink-dim);margin-top:4px}
+@media (max-width:780px){ #scg-root .xr-heroes{grid-template-columns:1fr 1fr} }
+@media (max-width:470px){ #scg-root .xr-heroes{grid-template-columns:1fr} }
+</style>
+</head>
+<body style="margin:0;background:#0c0e0b">
+
+<!-- ================= X MARKS THE SPOT · HUMERUS X-RAY ================= -->
+<div id="scg-root">
+
+  <div class="scg-topbar">
+    <div class="scg-mark" id="scgMarkMini"></div>
+    <div class="scg-spacer"></div>
+    <div class="scg-phasechip" id="scgPhaseChip">STANDBY</div>
+  </div>
+
+  <div class="scg-body">
+    <div class="scg-stage" id="scgStage">
+      <div class="scg-viewport" id="scgViewport">
+
+        <!-- X-ray room -->
+        <div class="scg-room scg-hidden" id="scgRoom">
+          <div class="scg-room3d" id="scgRoom3d" aria-label="3-D view: X-ray room with an erect stand, a patient table and a ceiling-mounted tube"></div>
+          <div class="scg-roomcap"><b id="xrCapB">GENERAL X-RAY ROOM</b><span id="scgRoomStep">erect stand · table · ceiling tube</span></div>
+          <svg class="scg-roomsvg" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet" aria-label="X-ray room">
+            <rect x="0" y="470" width="600" height="130" fill="#0e110d"/>
+            <rect x="120" y="90" width="26" height="390" fill="#dfe5dc"/><rect x="146" y="200" width="18" height="150" fill="#2e3338"/>
+            <ellipse cx="200" cy="160" rx="26" ry="32" fill="#2a2018"/>
+            <path d="M170 200 h70 l10 140 h-90 Z" fill="#a9c8d8"/><path d="M175 340 h30 v130 h-30 Z M210 340 h30 v130 h-30 Z" fill="#2f3f57"/>
+            <rect x="300" y="380" width="260" height="22" fill="#3a3f44"/><rect x="400" y="402" width="60" height="70" fill="#dfe5dc"/>
+            <text x="300" y="58" fill="#dfe7d6" font-size="15" font-family="Trebuchet MS,sans-serif" letter-spacing="4" text-anchor="middle">GENERAL X-RAY ROOM</text>
+          </svg>
+        </div>
+
+        <!-- light-beam view (what the radiographer sees from the tube side) -->
+        <div class="xr-lf scg-hidden" id="xrLF"><svg id="xrSvg" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="xr-tools" id="xrLfTools"></div></div>
+
+        <!-- image viewer -->
+        <div class="xr-view scg-hidden" id="xrView"><canvas id="xrViewCv" width="600" height="600"></canvas></div>
+
+        <div class="xr-vpinfo" id="xrInfo"></div>
+        <div class="xr-vpinfo2" id="xrInfo2"></div>
+        <div class="xr-flash" id="xrFlash"></div>
+        <div class="xr-hold scg-hidden" id="xrHold"></div>
+        <div class="scg-acq scg-hidden" id="scgAcq">
+          <div class="scg-acq-band"></div>
+          <h4 id="scgAcqTitle">PROCESSING</h4>
+          <div class="scg-acq-num" id="scgAcqNum"></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="scg-rail">
+      <div class="scg-rail-head">
+        <h3 id="scgRailTitle">Console</h3>
+        <p id="scgRailDesc">Awaiting operator</p>
+      </div>
+      <div class="scg-rail-body" id="scgRailBody"></div>
+      <div class="scg-cmds" id="scgCmds"></div>
+      <form class="scg-cli" id="scgCliForm" autocomplete="off">
+        <input id="scgCli" type="text" placeholder="type a command — try: help" aria-label="command input">
+      </form>
+    </aside>
+
+    <div class="scg-log" id="scgLog"></div>
+
+    <div class="scg-ach-wrap scg-hidden" id="scgAch">
+      <div class="scg-ach" id="scgAchBanner">
+        <img class="scg-ach-logo" id="scgAchLogo" alt="Rad-Lad">
+        <div class="scg-ach-marker"></div>
+        <div class="scg-ach-text">
+          <div class="scg-ach-label">Marker Unlocked</div>
+          <div class="scg-ach-title">That's so Humerus!</div>
+          <div class="scg-ach-sub">Humerus X-ray · AP and lateral, both diagnostic first time</div>
+        </div>
+        <button class="scg-ach-replay" id="scgAchReplay" type="button">Replay</button>
+      </div>
+      <div class="scg-ach-share">Share your <strong>That's so Humerus!</strong> Marker achievement below!</div>
+    </div>
+
+    <section class="scg-result scg-hidden" id="scgResult"></section>
+  </div>
+
+  <div class="scg-title" id="scgTitle">
+    <div class="scg-logo-plate"><img id="scgLogoBig" alt="Rad-Lad"></div>
+    <h1><span class="scg-the">X MARKS THE SPOT</span>HUMERUS X-RAY</h1>
+    <div class="scg-sub">Read the request, decide whether she stands, sits or lies on the table, rotate the arm, put the cross-wires on the spot, collimate shoulder to elbow, place your marker and set the exposure — then AP and lateral are judged as a radiographer would</div>
+    <button class="scg-start" id="scgStart">▶ Begin</button>
+    <div class="scg-scouts"><img id="scgT1" alt=""><img id="scgT2" alt=""></div>
+    <div class="scg-fine">Educational simulation — not a medical device, not for clinical use.
+      The radiographs are real AP and lateral humerus films from two different people (the lateral from FracAtlas, CC BY 4.0); positioning and exposure errors are simulated on them in your browser — see the credits on the results screen.</div>
+  </div>
+
+</div>
+
+<script src="assets/calib.js"></script>
+<script src="room3d.js?v=1"></script>
+<script>
+(function(){
+"use strict";
+/* ---------------------------------------------------------------
+   X MARKS THE SPOT — humerus X-ray positioning simulator
+   Request (choose the patient) & checks → AP: set-up (3-D room: stand / sit / supine) → light beam: centre,
+   collimate, marker → exposure → review (accept/repeat) → lateral: the same → debrief.
+   "Arm mm": every position is in mm in one canonical frame, the AP film as displayed (her right on the viewer's
+   left; 0.2 mm/px estimated). Both films were resampled onto it (assets/calib.json), so either film can be shown
+   for any set-up: the arm rotation, not the step, decides whether you get an AP or a lateral. The tube looks at her
+   front in every set-up here, so the light-beam view is the same way round as the film.
+   --------------------------------------------------------------- */
+var BASE = "./assets/";
+var CAL = window.XR_CALIB;
+var ASSETS = window.SCG_ASSETS || null;
+var PNG = { logo_full:1, logo_mark:1 };
+function url(n){ return ASSETS ? ASSETS[n] : BASE + n + (PNG[n] ? ".png" : ".jpg"); }
+var $ = function(id){ return document.getElementById(id); };
+var stage=$("scgStage"), vp=$("scgViewport"), room=$("scgRoom"), lf=$("xrLF"), svg=$("xrSvg"), lfTools=$("xrLfTools"),
+    viewEl=$("xrView"), viewCv=$("xrViewCv"), info=$("xrInfo"), info2=$("xrInfo2"), flashEl=$("xrFlash"), holdEl=$("xrHold"),
+    acqEl=$("scgAcq"), acqTitle=$("scgAcqTitle"), acqNum=$("scgAcqNum"),
+    railTitle=$("scgRailTitle"), railDesc=$("scgRailDesc"), railBody=$("scgRailBody"),
+    cmds=$("scgCmds"), cliForm=$("scgCliForm"), cli=$("scgCli"), logEl=$("scgLog"), phaseChip=$("scgPhaseChip"),
+    titleEl=$("scgTitle"), resultEl=$("scgResult"), achWrap=$("scgAch");
+
+$("scgMarkMini").innerHTML = '<img class="scg-mark-ic" src="'+url("logo_mark")+'" alt="Rad-Lad">'+
+  '<div class="scg-mark-tx"><b>X&nbsp;MARKS&nbsp;THE&nbsp;SPOT&nbsp;·&nbsp;HUMERUS&nbsp;X-RAY</b><span>Rad-Lad&nbsp;·&nbsp;Illuminate&nbsp;the&nbsp;Invisible</span></div>';
+$("scgLogoBig").src = url("logo_full"); $("scgAchLogo").src = url("logo_mark");
+$("scgT1").src = url("ap_t"); $("scgT2").src = url("lat_t");
+function playAchievement(){ achWrap.classList.remove("is-playing"); void achWrap.offsetWidth; achWrap.classList.add("is-playing"); }
+$("scgAchReplay").addEventListener("click", playAchievement);
+
+/* =============================================================
+   TEACHING DATA
+   ============================================================= */
+var PROJ = { ap:{ name:"AP", long:"AP humerus" }, lat:{ name:"LAT", long:"Lateral humerus" } };
+var VIEW = { x0:-200, y0:-130, s:640 };
+var MID = CAL.midline;
+var CASES = {
+  walk:{ b:"Outpatient — walked in", who:"46-year-old woman", hx:"Aching pain in the right upper arm for six weeks, worse at night. No injury. <i>?bone lesion.</i>",
+         mob:"Walked in from the clinic. Able to stand and follow instructions.", def:"stand" },
+  trolley:{ b:"Ward patient — on a trolley", who:"81-year-old woman", hx:"Pain and swelling of the right upper arm for two weeks. No injury. <i>?bone lesion.</i>",
+         mob:"Came down from the ward on a trolley. Frail: can't stand, or sit without support.", def:"supine" }
+};
+var POSITION = {
+  walk:{ stand:[5, "ok", "Standing with her back to the erect stand: quick and comfortable for a patient who can stand."],
+         sit:[5, "ok", "Seated with her back to the stand: just as good, and steadier if she feels faint."],
+         supine:[2, "warn", "It works, but it's an unnecessary transfer on to the table for a patient who can stand."] },
+  trolley:{ supine:[5, "ok", "Supine on the table (slide-sheet transfer, two staff): the safe choice for a patient who can't stand or sit unsupported."],
+         sit:[0, "bad", "She can't sit without support: a falls risk, and she'll move during the exposure."],
+         stand:[0, "bad", "She can't stand. Unsafe."] }
+};
+var CHECKS = [
+  { id:"id",    t:"Patient identity confirmed", s:"three-point ID: name, date of birth, address — against the request" },
+  { id:"just",  t:"Request justified", s:"clinical details support AP + lateral humerus; referrer and history complete" },
+  { id:"gown",  t:"Top and bra off, gown on", s:"straps, clips and fasteners over the shoulder will show on the film" },
+  { id:"jewel", t:"Necklace and jewellery removed", s:"a long chain can hang over the shoulder" }
+];
+var ROT_AP = { v:"sup", b:"Arm slightly abducted, hand supinated", s:"palm forward (palm up on the table) — the epicondyles parallel to the detector" };
+var ROT_INT = { v:"int", b:"Elbow flexed, back of the hand on the abdomen", s:"arm internally rotated — the epicondyles perpendicular to the detector" };
+var SET = {
+  ap: [
+    { key:"pos", label:"Patient position", opts:[
+      { v:"stand", b:"Standing, back to the erect stand", s:"turn her slightly toward the right so the arm and shoulder touch the stand" },
+      { v:"sit", b:"Seated on a stool, back to the erect stand", s:"the stand lowered to her arm; feet flat, sitting upright" },
+      { v:"supine", b:"Lying supine on the table", s:"tube overhead, detector in the table bucky; the arm on the table beside her" } ] },
+    { key:"rot", label:"Arm", opts:[ ROT_AP, ROT_INT ], ok:"sup" },
+    { key:"sid", label:"SID", seg:[100, 150, 180], ok:100, s:"100 cm is the standard SID for the humerus, at the stand or on the table" }
+  ],
+  lat: [
+    { key:"rot", label:"Arm", opts:[ ROT_INT, ROT_AP ], ok:"int" },
+    { key:"sid", label:"SID", seg:[100, 150, 180], ok:100, s:"100 cm, the same as the AP" }
+  ]
+};
+var BREATH = [
+  { v:"hold", b:"“Keep still… and stop breathing”", s:"suspended respiration — the shoulder girdle doesn't move", ok:1 },
+  { v:"still", b:"“Keep still”", s:"she keeps still but goes on breathing: the shoulder rises and falls", ok:0 },
+  { v:"none", b:"(no instruction)", s:"she may move or breathe during the exposure", ok:0 }
+];
+var EXPO = { ap:{ kv:65, mas:6.3 }, lat:{ kv:65, mas:6.3 } };   // the manual set that gives DI 0 (grid, 100 cm)
+var MAS_STEPS = [0.5, 0.63, 0.8, 1, 1.25, 1.6, 2, 2.5, 3.2, 4, 5, 6.3, 8, 10, 12.5, 16, 20, 25, 32];
+var AEC_CH = { l:[-85, -55], c:[0, 25], r:[85, -55] };            // chamber centres from the central ray (mm), 56 × 76
+
+/* =============================================================
+   STATE
+   ============================================================= */
+var S;
+function freshProj(p){
+  return {
+    set: p==="ap" ? { pos:null, rot:null, sid:null } : { rot:null, sid:null },
+    field: { cx:135, cy:200, w:200, h:300 },
+    marker: null,                                  // { l:"L"|"R", x, y } in arm mm
+    expo: { kv:75, mas:5, aec:true, ch:{ l:false, c:true, r:false }, grid:true, breath:null },
+    shots: [], accepted:false
+  };
+}
+function freshState(){
+  return { phase:"title", proj:"ap", kase:null, checks:{}, palp:false, showAec:true,
+           ap:freshProj("ap"), lat:freshProj("lat"), dose:0, repeats:0, firstGood:{ ap:false, lat:false } };
+}
+S = freshState();
+
+/* =============================================================
+   LOG / PHASE / COMMANDS
+   ============================================================= */
+function log(msg, cls){ var d=document.createElement("div"); if(cls) d.className="scg-l-"+cls; d.innerHTML=msg; logEl.appendChild(d); logEl.scrollTop=logEl.scrollHeight; }
+var PHASE_CHIP = { title:"STANDBY", req:"REQUEST", setup:"POSITIONING", centre:"LIGHT BEAM", expose:"EXPOSURE", review:"IMAGE REVIEW", result:"DEBRIEF" };
+function cur(){ return S[S.proj]; }
+function posNow(){ return S.ap.set.pos || (S.kase ? CASES[S.kase].def : "stand"); }
+function setPhase(ph){
+  S.phase = ph;
+  phaseChip.textContent = (ph==="setup"||ph==="centre"||ph==="expose"||ph==="review" ? PROJ[S.proj].name+" · " : "") + PHASE_CHIP[ph];
+  room.classList.toggle("scg-hidden", !(ph==="req"||ph==="setup"||ph==="expose"));
+  lf.classList.toggle("scg-hidden", ph!=="centre");
+  viewEl.classList.toggle("scg-hidden", !(ph==="review"||ph==="result"));
+  info.textContent = ""; info2.textContent = "";
+  if(room3d){ if(room.classList.contains("scg-hidden")) room3d.stop(); else room3d.start(); }
+  render();
+}
+var CMD = {
+  begin:{ k:"begin", t:"Patient ready — start positioning", go:function(){ startProj("ap"); } },
+  centre:{ k:"next", t:"Light beam: centre & collimate ▸", go:function(){ gotoCentre(); } },
+  expose:{ k:"next", t:"To the exposure console ▸", go:function(){ gotoExpose(); } },
+  back:{ k:"back", t:"◂ Back", go:function(){ goBack(); } },
+  fire:{ k:"expose", t:"☢ EXPOSE", go:function(){ expose(); } },
+  accept:{ k:"accept", t:"✓ Accept image", go:function(){ accept(); } },
+  repeat:{ k:"repeat", t:"↻ Repeat (re-position)", go:function(){ repeatShot(); } },
+  again:{ k:"restart", t:"↺ Start again", go:function(){ resetAll(); } }
+};
+function cmdList(){
+  switch(S.phase){
+    case "req": return ["begin"];
+    case "setup": return ["centre"];
+    case "centre": return ["expose", "back"];
+    case "expose": return ["fire", "back"];
+    case "review": return ["accept", "repeat"];
+    case "result": return ["again"];
+  }
+  return [];
+}
+function cmdEnabled(c){
+  if(c==="begin") return !!S.kase;
+  if(c==="centre") return setupDone();
+  if(c==="expose") return !!cur().marker;
+  if(c==="fire") return !!cur().expo.breath && (!cur().expo.aec || chCount()>0) && !S.busy;
+  if(c==="repeat") return cur().shots.length < 4;
+  return true;
+}
+function renderCmds(){
+  cmds.innerHTML = "";
+  cmdList().forEach(function(c, i){
+    var b=document.createElement("button"); b.className="scg-btn"+(i===0?" is-primary":"");
+    var en=cmdEnabled(c); b.disabled=!en; if(i===0 && en) b.classList.add("is-pulse");
+    b.innerHTML=CMD[c].t+'<span class="scg-key">'+CMD[c].k+'</span>';
+    b.addEventListener("click", function(){ logCmd(CMD[c].k); CMD[c].go(); });
+    cmds.appendChild(b);
+  });
+}
+function logCmd(c){ log("$ "+c, "cmd"); }
+
+/* =============================================================
+   RAIL
+   ============================================================= */
+function choiceBtns(opts, curV, key){
+  return '<div class="scg-choice" data-key="'+key+'">'+opts.map(function(o){
+    return '<button type="button" data-v="'+o.v+'" class="'+(curV===o.v?"is-on":"")+'"><b>'+o.b+'</b><span>'+o.s+'</span></button>';
+  }).join("")+'</div>';
+}
+function bindChoices(root, fn){
+  Array.prototype.forEach.call(root.querySelectorAll(".scg-choice"), function(ch){
+    Array.prototype.forEach.call(ch.querySelectorAll("button"), function(b){
+      b.addEventListener("click", function(){ fn(ch.dataset.key, b.dataset.v); });
+    });
+  });
+}
+function setupDone(){ var s=cur().set; return Object.keys(s).every(function(k){ return s[k]!=null; }); }
+var POSNAME = { stand:"standing at the erect stand", sit:"seated at the erect stand", supine:"supine on the table" };
+function render(){
+  renderCmds();
+  var ph=S.phase, P=cur(), h="";
+  if(ph==="req"){
+    railTitle.textContent="Request & checks"; railDesc.textContent="Choose today's patient, then prepare her";
+    h += '<div class="xr-grp"><span>Patient</span>'+choiceBtns(Object.keys(CASES).map(function(k){ return { v:k, b:CASES[k].b, s:CASES[k].who }; }), S.kase, "kase")+'</div>';
+    if(S.kase){
+      var K=CASES[S.kase];
+      h += '<div class="xr-req"><b>X-RAY REQUEST · HUMERUS</b>'+
+           '<p><b style="display:inline;letter-spacing:0;color:#23261f;font-size:11.5px">AP and lateral right humerus</b></p>'+
+           '<p>'+K.who+'. '+K.hx+'</p><p>'+K.mob+'</p></div>';
+      h += '<div class="xr-grp"><span>Pre-exposure checks</span><div class="xr-ticks">'+CHECKS.map(function(c){
+        return '<label class="'+(S.checks[c.id]?"is-on":"")+'"><input type="checkbox" data-c="'+c.id+'"'+(S.checks[c.id]?" checked":"")+'><span><b style="color:inherit">'+c.t+'</b><br><span style="color:var(--ink-faint)">'+c.s+'</span></span></label>';
+      }).join("")+'</div></div>';
+      h += '<div class="scg-hint">Anything you don\'t check is still on the patient when you expose.</div>';
+    }
+  }
+  else if(ph==="setup"){
+    railTitle.textContent=PROJ[S.proj].long+" · set-up"; railDesc.textContent="The 3-D room updates as you choose · drag to look around";
+    if(S.proj==="lat") h += '<div class="scg-hint">She stays <b>'+POSNAME[posNow()]+'</b>, as for the AP. Only the arm moves.</div>';
+    SET[S.proj].forEach(function(g){
+      h += '<div class="xr-grp"><span>'+g.label+'</span>';
+      if(g.seg){ h += '<div class="scg-seg" data-key="'+g.key+'">'+g.seg.map(function(v){ return '<button type="button" data-v="'+v+'" class="'+(P.set[g.key]===v?"is-on":"")+'">'+v+' cm</button>'; }).join("")+'</div><div class="scg-hint">'+g.s+'</div>'; }
+      else h += choiceBtns(g.opts, P.set[g.key], g.key);
+      h += '</div>';
+    });
+    if(S.proj==="lat") h += '<div class="scg-hint">No injury here, so the arm can be rotated. With a suspected fracture you would <b>not</b> rotate the arm: turn the patient, or use a horizontal-beam / transthoracic lateral.</div>';
+  }
+  else if(ph==="centre"){
+    railTitle.textContent=PROJ[S.proj].long+" · light beam"; railDesc.textContent="X marks the spot: cross-wires = central ray";
+    var f=P.field;
+    h += '<div class="scg-readout"><div class="scg-ro-lab">Light field</div><div class="scg-ro-val">'+(f.w/10).toFixed(1)+' × '+(f.h/10).toFixed(1)+' <small>cm</small></div></div>';
+    h += '<div class="scg-hint">You are at the tube, looking at her front: her right arm is on your left. <b>Drag the field</b> to put the cross-wires on the central ray point; <b>drag its edges</b> to collimate (the collimator opens symmetrically). Include the <b>shoulder and elbow joints</b> and the soft tissue of the arm, and no more than you need.</div>';
+    h += '<div class="xr-grp"><span>Anatomical marker</span><div class="scg-hint">Drag a lead marker onto the detector inside the field, clear of anatomy.</div>'+
+         '<div class="scg-seg" id="xrMkBtns"><button type="button" data-l="L" class="'+(P.marker&&P.marker.l==="L"?"is-on":"")+'">L marker</button><button type="button" data-l="R" class="'+(P.marker&&P.marker.l==="R"?"is-on":"")+'">R marker</button></div>'+
+         '<div class="scg-hint">'+(P.marker ? 'Marker <b>'+P.marker.l+'</b> placed — drag it to adjust.' : 'Tap a marker to drop it in the field, then drag it.')+'</div></div>';
+    h += '<div class="scg-hint">Tools on the image: <b>Palpate</b> shows the landmarks you would feel; <b>AEC</b> shows the ionisation chambers on the detector.</div>';
+  }
+  else if(ph==="expose"){
+    railTitle.textContent=PROJ[S.proj].long+" · exposure"; railDesc.textContent="Set the factors, give the instruction, expose";
+    var e=P.expo;
+    h += '<div class="xr-slider"><span>kV</span><input type="range" id="xrKv" min="45" max="125" step="1" value="'+e.kv+'"><output>'+e.kv+' kV</output></div>';
+    h += '<div class="scg-seg" data-k="mode"><span>Mode</span><button type="button" data-v="aec" class="'+(e.aec?"is-on":"")+'">AEC</button><button type="button" data-v="man" class="'+(!e.aec?"is-on":"")+'">Manual</button></div>';
+    if(e.aec){
+      h += '<div class="xr-aec"><svg viewBox="0 0 132 132"><rect x="2" y="2" width="128" height="128" rx="6" fill="#0a0d08" stroke="#2c3a22"/>'+
+           '<line x1="66" y1="54" x2="66" y2="78" stroke="#2c3a22"/><line x1="54" y1="66" x2="78" y2="66" stroke="#2c3a22"/>'+
+           '<rect class="ch'+(e.ch.l?" is-on":"")+'" data-c="l" x="19" y="26" width="22" height="30" rx="3"/>'+
+           '<rect class="ch'+(e.ch.r?" is-on":"")+'" data-c="r" x="91" y="26" width="22" height="30" rx="3"/>'+
+           '<rect class="ch'+(e.ch.c?" is-on":"")+'" data-c="c" x="55" y="62" width="22" height="30" rx="3"/>'+
+           '<text x="66" y="122" text-anchor="middle">tap chambers</text></svg></div>';
+      h += '<div class="scg-kv"><span>mAs</span><span>set by the AEC</span></div>';
+    } else {
+      var mi=nearestMas(e.mas);
+      h += '<div class="xr-slider"><span>mAs</span><input type="range" id="xrMas" min="0" max="'+(MAS_STEPS.length-1)+'" step="1" value="'+mi+'"><output>'+MAS_STEPS[mi]+' mAs</output></div>';
+    }
+    h += '<div class="scg-seg" data-k="grid"><span>Grid</span><button type="button" data-v="on" class="'+(e.grid?"is-on":"")+'">In</button><button type="button" data-v="off" class="'+(!e.grid?"is-on":"")+'">Out</button></div>';
+    h += '<div class="xr-grp"><span>Instruction</span>'+choiceBtns(BREATH, e.breath, "breath")+'</div>';
+    h += kvBlock([["Projection", PROJ[S.proj].long], ["Patient", POSNAME[posNow()]], ["SID", P.set.sid+" cm"], ["Field", (P.field.w/10).toFixed(1)+" × "+(P.field.h/10).toFixed(1)+" cm"], ["Marker", P.marker ? P.marker.l : "—"]]);
+  }
+  else if(ph==="review"){
+    var shot=P.shots[P.shots.length-1];
+    railTitle.textContent=PROJ[S.proj].long+" · review"; railDesc.textContent="Would you send this image to the radiologist?";
+    h += '<div class="scg-readout'+(Math.abs(shot.di)>2?" is-warn":"")+'"><div class="scg-ro-lab">Deviation index</div><div class="scg-ro-val">'+(shot.di>=0?"+":"")+shot.di.toFixed(1)+' <small>EI '+shot.ei+' · target 400</small></div></div>';
+    h += kvBlock([["kV / mAs", shot.kv+" / "+shot.mas], ["DAP", shot.dap.toFixed(3)+" Gy·cm²"], ["Exposure", (P.shots.length)+(P.shots.length>1?" (repeat)":"")]]);
+    h += '<div class="xr-grp"><span>Your critique</span><div class="scg-hint">Check the film: both joints included, the right projection (AP: greater tuberosity in profile; lateral: epicondyles superimposed), collimation, marker, exposure, artefacts. The full debrief comes at the end.</div></div>';
+    if(shot.set.rot==="int") h += '<div class="scg-hint is-warn">The internal-rotation film comes from a different person, who has a plate and screws from earlier fixation. That metalwork is part of the source film, not a finding in your patient.</div>';
+    h += '<div class="scg-hint">Accept if it is diagnostic; repeat if it isn\'t — every repeat is another dose.</div>';
+  }
+  else if(ph==="result"){
+    railTitle.textContent="Debrief"; railDesc.textContent="Scroll down for the full critique";
+    h += '<div class="scg-hint">Your accepted films are in the viewer. Tap either film in the debrief to show it here.</div>';
+  }
+  railBody.innerHTML = h;
+  bindRail();
+}
+function kvBlock(rows){ return '<div>'+rows.map(function(r){ return '<div class="scg-kv"><span>'+r[0]+'</span><span>'+r[1]+'</span></div>'; }).join('')+'</div>'; }
+function nearestMas(m){ var bi=0; MAS_STEPS.forEach(function(v, i){ if(Math.abs(v-m) < Math.abs(MAS_STEPS[bi]-m)) bi=i; }); return bi; }
+function bindRail(){
+  var P=cur();
+  Array.prototype.forEach.call(railBody.querySelectorAll(".xr-ticks input"), function(inp){
+    inp.addEventListener("change", function(){ S.checks[inp.dataset.c]=inp.checked; render(); });
+  });
+  bindChoices(railBody, function(key, v){
+    if(key==="kase"){ setCase(v); return; }
+    if(key==="breath"){ P.expo.breath=v; log("Instruction: "+BREATH.filter(function(b){ return b.v===v; })[0].b, "sys"); render(); return; }
+    setChoice(key, v);
+  });
+  Array.prototype.forEach.call(railBody.querySelectorAll(".scg-seg[data-key]"), function(sg){
+    Array.prototype.forEach.call(sg.querySelectorAll("button"), function(b){ b.addEventListener("click", function(){ setChoice(sg.dataset.key, +b.dataset.v); }); });
+  });
+  Array.prototype.forEach.call(railBody.querySelectorAll(".scg-seg[data-k]"), function(sg){
+    Array.prototype.forEach.call(sg.querySelectorAll("button"), function(b){ b.addEventListener("click", function(){
+      if(sg.dataset.k==="mode") P.expo.aec = b.dataset.v==="aec"; else P.expo.grid = b.dataset.v==="on";
+      render(); }); });
+  });
+  var kv=$("xrKv"); if(kv) kv.addEventListener("input", function(){ P.expo.kv=+kv.value; kv.nextElementSibling.textContent=kv.value+" kV"; });
+  var ms=$("xrMas"); if(ms) ms.addEventListener("input", function(){ P.expo.mas=MAS_STEPS[+ms.value]; ms.nextElementSibling.textContent=P.expo.mas+" mAs"; });
+  Array.prototype.forEach.call(railBody.querySelectorAll(".xr-aec rect.ch"), function(r){
+    r.addEventListener("click", function(){ P.expo.ch[r.dataset.c]=!P.expo.ch[r.dataset.c]; render(); });
+  });
+  var mk=$("xrMkBtns"); if(mk) Array.prototype.forEach.call(mk.querySelectorAll("button"), function(b){ b.addEventListener("click", function(){ dropMarker(b.dataset.l); }); });
+}
+function chCount(){ var c=cur().expo.ch; return (c.l?1:0)+(c.c?1:0)+(c.r?1:0); }
+function setCase(k){
+  if(!CASES[k]) return;
+  S.kase=k; log("Patient: "+CASES[k].b.toLowerCase()+" ("+CASES[k].who+").", "sys"); syncRoom(); render();
+}
+function setChoice(key, v){
+  var P=cur(); P.set[key]=v;
+  var g=SET[S.proj].filter(function(x){ return x.key===key; })[0];
+  var txt = g.seg ? "SID "+v+" cm" : g.opts.filter(function(o){ return o.v===v; })[0].b;
+  log(g.label+": "+txt, "sys");
+  syncRoom(); render();
+}
+
+/* =============================================================
+   3-D ROOM
+   ============================================================= */
+var THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js";
+var room3d=null, room3dTried=false;
+window.__room=function(){ return room3d; };
+function init3D(){
+  if(room3dTried){ if(room3d){ syncRoom(); room3d.start(); } return; }
+  room3dTried=true;
+  if(!window.SCG_ROOM3D) return;
+  import(THREE_URL).then(function(THREE){
+    try{ room3d=window.SCG_ROOM3D(THREE, $("scgRoom3d")); room.classList.add("is-3d"); syncRoom(); room3d.start(); }
+    catch(e){ room3d=null; room.classList.remove("is-3d"); if(window.console) console.error(e); }
+  }).catch(function(){ room3d=null; });
+}
+function roomPose(){
+  var s=cur().set;
+  if(S.phase==="req") return { pos:S.kase==="trolley" ? "supine" : "stand", rot:"rest" };
+  return { pos:posNow(), rot:s.rot || "rest" };
+}
+function fieldWorld(){        // light field for the room: size, and the central ray relative to the mid-humerus
+  var f=cur().field, ref=CAL.ref;
+  return { w:f.w/1000, h:f.h/1000, fx:(f.cx-ref[0])/1000, fy:(f.cy-ref[1])/1000 };
+}
+function syncRoom(){
+  if(!room3d) return;
+  var P=cur();
+  room3d.setPose(roomPose());
+  room3d.setSID(P.set.sid || 100);
+  room3d.setField(S.phase==="expose" ? fieldWorld() : null);
+  room3d.view(S.phase==="expose" ? "tube" : "room");
+  var cap=$("xrCapB"), st=$("scgRoomStep");
+  if(S.phase==="req"){ cap.textContent="GENERAL X-RAY ROOM"; st.textContent=S.kase==="trolley" ? "she has been transferred to the table in a gown" : (S.kase ? "she has changed into a gown" : "choose today's patient in the console"); }
+  else if(S.phase==="setup"){ cap.textContent=(PROJ[S.proj].long+" · "+POSNAME[posNow()]).toUpperCase(); st.textContent=setupDone() ? "set-up complete — on to the light beam" : "choose the set-up in the console"; }
+  else if(S.phase==="expose"){ cap.textContent="LIGHT BEAM ON"; st.textContent="field "+(P.field.w/10).toFixed(0)+" × "+(P.field.h/10).toFixed(0)+" cm · SID "+(P.set.sid||100)+" cm"; }
+}
+
+/* =============================================================
+   LIGHT-BEAM VIEW (SVG in arm mm; the tube sees her front, so it is the same way round as the film)
+   ============================================================= */
+var NS="http://www.w3.org/2000/svg";
+function path(pts, close){ return pts.map(function(p, i){ return (i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1); }).join(" ")+(close===false?"":" Z"); }
+function smooth(pts){                       // closed Catmull-Rom -> cubic beziers
+  var n=pts.length, P=pts, d="M"+P[0][0].toFixed(1)+" "+P[0][1].toFixed(1);
+  for(var i=0;i<n;i++){
+    var p0=P[(i-1+n)%n], p1=P[i], p2=P[(i+1)%n], p3=P[(i+2)%n];
+    d+=" C"+(p1[0]+(p2[0]-p0[0])/6).toFixed(1)+" "+(p1[1]+(p2[1]-p0[1])/6).toFixed(1)+" "+(p2[0]-(p3[0]-p1[0])/6).toFixed(1)+" "+(p2[1]-(p3[1]-p1[1])/6).toFixed(1)+" "+p2[0].toFixed(1)+" "+p2[1].toFixed(1);
+  }
+  return d+" Z";
+}
+function bodyArm(){
+  var s=cur().set, rot=s.rot || "rest", g="";
+  // torso in the gown (her right side, chest wall and shoulder), neck and face
+  var torso=[[MID-48,-30],[260,-12],[200,8],[160,22],[150,60],[152,140],[150,230],[154,300],[166,380],[172,520],[700,520],[700,-30]];
+  g += '<path d="'+smooth(torso)+'" fill="url(#xrGown)" stroke="#5f7f92" stroke-width="2"/>';
+  g += '<path d="'+smooth([[MID-46,-120],[MID+46,-120],[MID+52,-10],[MID-52,-10]])+'" fill="#c9926f"/>';
+  var hy=-175;
+  g += '<ellipse cx="'+MID+'" cy="'+hy+'" rx="72" ry="92" fill="#cf9a7c"/><path d="M'+(MID-74)+' '+(hy-20)+' Q'+MID+' '+(hy-140)+' '+(MID+74)+' '+(hy-20)+' Q'+MID+' '+(hy-75)+' '+(MID-74)+' '+(hy-20)+'Z" fill="#2a2018"/>'+
+       '<ellipse cx="'+(MID-26)+'" cy="'+(hy-8)+'" rx="10" ry="5" fill="#3b2c22"/><ellipse cx="'+(MID+26)+'" cy="'+(hy-8)+'" rx="10" ry="5" fill="#3b2c22"/><path d="M'+(MID-14)+' '+(hy+45)+' Q'+MID+' '+(hy+52)+' '+(MID+14)+' '+(hy+45)+'" stroke="#9a5a4e" stroke-width="3" fill="none"/>';
+  // the right arm (skin), then the short gown sleeve over the shoulder
+  var upper=[[150,28],[112,50],[90,92],[78,140],[73,200],[72,260],[68,320],[60,370]], medialUp=[[116,360],[124,300],[132,240],[140,180],[150,140]];
+  var arm;
+  if(rot==="int") arm=upper.concat([[60,402],[78,428],[200,432],[330,428],[372,432],[410,416],[408,382],[372,370],[330,374],[200,372],[122,368]]).concat(medialUp);
+  else arm=upper.concat([[58,410],[62,480],[66,560],[120,560],[118,480],[114,410]]).concat(medialUp);
+  g += '<path d="'+smooth(arm)+'" fill="#cf9a7c" stroke="#a87458" stroke-width="2"/>';
+  if(rot==="sup") g += '<path d="M84 470 Q90 520 92 560" stroke="#a87458" stroke-width="2" fill="none"/>';
+  g += '<path d="'+smooth([[152,24],[112,48],[88,96],[80,150],[142,166],[154,138]])+'" fill="url(#xrGown)" stroke="#5f7f92" stroke-width="2"/>';
+  return g;
+}
+function landmarks(){
+  var s=cur().set, L=[[148, 40, "acromion"]];
+  if(s.rot==="int"){ L.push([88, 362, "epicondyles (one above the other)", 22]); }
+  else { L.push([104, 92, "greater tuberosity"], [60, 362, "lateral epicondyle", 22], [114, 362, "medial epicondyle", -12]); }
+  return L;
+}
+var drag=null;
+function drawLF(){
+  var P=cur(), v=VIEW, f=P.field, sup=posNow()==="supine";
+  svg.setAttribute("viewBox", v.x0+" "+v.y0+" "+v.s+" "+v.s);
+  var x0=f.cx-f.w/2, x1=f.cx+f.w/2, y0=f.cy-f.h/2, y1=f.cy+f.h/2, cx=f.cx;
+  var h = '<defs><pattern id="xrGown" width="24" height="24" patternUnits="userSpaceOnUse"><rect width="24" height="24" fill="#a9c8d8"/><path d="M12 7 l5 5 -5 5 -5 -5Z" fill="#8fb3c8"/></pattern>'+
+          '<radialGradient id="xrRoom" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#d9dedb"/><stop offset="1" stop-color="#9aa29d"/></radialGradient></defs>';
+  h += '<rect x="'+v.x0+'" y="'+v.y0+'" width="'+v.s+'" height="'+v.s+'" fill="url(#xrRoom)"/>';
+  if(sup){   // looking down at the table: carbon top, mattress, her right arm on it
+    h += '<rect x="-10" y="'+v.y0+'" width="'+(v.x0+v.s+10)+'" height="'+v.s+'" fill="#2e3338"/><rect x="5" y="'+v.y0+'" width="'+(v.x0+v.s)+'" height="'+v.s+'" fill="#39424d"/>';
+    h += '<rect x="-16" y="'+v.y0+'" width="8" height="'+v.s+'" fill="#c9cfd3"/>';
+  } else {   // the erect stand behind her, centred on the central ray
+    h += '<rect x="'+(cx-300)+'" y="'+(f.cy-300)+'" width="600" height="600" rx="24" fill="#eef0ee" stroke="#b4bbc0" stroke-width="3"/>';
+    h += '<rect x="'+(cx-250)+'" y="'+(f.cy-250)+'" width="500" height="500" fill="#2e3338"/>';
+    h += '<rect x="'+(cx-215)+'" y="'+(f.cy-215)+'" width="430" height="430" fill="none" stroke="rgba(235,240,245,.35)" stroke-width="2" stroke-dasharray="8 6"/>';
+  }
+  h += bodyArm();
+  if(S.showAec){
+    Object.keys(AEC_CH).forEach(function(k){ var c=AEC_CH[k]; h += '<rect x="'+(cx+c[0]-28)+'" y="'+(f.cy+c[1]-38)+'" width="56" height="76" fill="none" stroke="rgba(255,236,150,.85)" stroke-width="2.5" stroke-dasharray="7 5"/>'; });
+  }
+  // light: dim the room outside the field, warm the field, cross-wire shadows
+  h += '<path d="M'+v.x0+' '+v.y0+' h'+v.s+' v'+v.s+' h-'+v.s+'Z M'+x0+' '+y0+' V'+y1+' H'+x1+' V'+y0+'Z" fill="rgba(6,8,6,.5)" fill-rule="evenodd" pointer-events="none"/>';
+  h += '<rect x="'+x0+'" y="'+y0+'" width="'+(x1-x0)+'" height="'+(y1-y0)+'" fill="rgba(255,236,190,.16)" stroke="rgba(255,244,214,.9)" stroke-width="2" pointer-events="none"/>';
+  h += '<path d="M'+x0+' '+f.cy+' H'+x1+' M'+cx+' '+y0+' V'+y1+'" stroke="rgba(20,16,10,.75)" stroke-width="2.5" pointer-events="none"/>';
+  h += '<rect id="xrMove" x="'+x0+'" y="'+y0+'" width="'+(x1-x0)+'" height="'+(y1-y0)+'" fill="transparent" style="cursor:move"/>';
+  // edge handles (symmetric collimator blades)
+  [["l", x0, f.cy, "ew"], ["r", x1, f.cy, "ew"], ["t", cx, y0, "ns"], ["b", cx, y1, "ns"]].forEach(function(e){
+    var horiz = e[3]==="ew";
+    h += '<rect data-e="'+e[0]+'" x="'+(e[1]-(horiz?14:40))+'" y="'+(e[2]-(horiz?40:14))+'" width="'+(horiz?28:80)+'" height="'+(horiz?80:28)+'" fill="transparent" style="cursor:'+e[3]+'-resize"/>';
+    h += '<rect x="'+(e[1]-(horiz?4:22))+'" y="'+(e[2]-(horiz?22:4))+'" width="'+(horiz?8:44)+'" height="'+(horiz?44:8)+'" rx="3" fill="#ffd38a" pointer-events="none"/>';
+  });
+  h += '<text x="'+(x0+6)+'" y="'+(y1+20)+'" font-family="ui-monospace,monospace" font-size="15" fill="#ffe6b0" stroke="#000" stroke-width="3" paint-order="stroke">'+(f.w/10).toFixed(1)+' × '+(f.h/10).toFixed(1)+' cm</text>';
+  if(S.palp) landmarks().forEach(function(m){
+    h += '<circle cx="'+m[0]+'" cy="'+m[1]+'" r="6" fill="#ff5a4a" stroke="#fff" stroke-width="2" pointer-events="none"/>';
+    if(m[2]) h += '<text x="'+(m[0]+(m[0]<90?-10:10))+'" y="'+(m[1]+5+(m[3]||0))+'" text-anchor="'+(m[0]<90?"end":"start")+'" font-family="ui-monospace,monospace" font-size="13" fill="#fff" stroke="#000" stroke-width="3.5" paint-order="stroke" pointer-events="none">'+m[2]+'</text>';
+  });
+  if(P.marker){
+    var mx=P.marker.x, my=P.marker.y;
+    h += '<g class="xr-mk" id="xrMk"><rect x="'+(mx-14)+'" y="'+(my-14)+'" width="28" height="28" rx="5" fill="#d23c2e" stroke="#fff" stroke-width="2"/>'+
+         '<text x="'+mx+'" y="'+(my+8)+'" text-anchor="middle" font-family="Trebuchet MS,sans-serif" font-weight="700" font-size="22" fill="#fff">'+P.marker.l+'</text></g>';
+  }
+  h += '<text x="'+(v.x0+12)+'" y="'+(v.y0+v.s/2+5)+'" font-family="ui-monospace,monospace" font-size="14" fill="#e8ece9" stroke="#000" stroke-width="3" paint-order="stroke">◂ patient\'s RIGHT</text>';
+  h += '<text x="'+(v.x0+v.s-12)+'" y="'+(v.y0+v.s/2+5)+'" text-anchor="end" font-family="ui-monospace,monospace" font-size="14" fill="#e8ece9" stroke="#000" stroke-width="3" paint-order="stroke">patient\'s LEFT ▸</text>';
+  svg.innerHTML = h;
+  info.textContent = "LIGHT BEAM · "+PROJ[S.proj].name+"\nview from the tube side";
+  info2.textContent = sup ? "looking down at the table" : "you face her: her right arm on your left";
+}
+function svgPt(e){ var p=svg.createSVGPoint(); p.x=e.clientX; p.y=e.clientY; var q=p.matrixTransform(svg.getScreenCTM().inverse()); return [q.x, q.y]; }
+svg.addEventListener("pointerdown", function(e){
+  if(S.phase!=="centre") return;
+  var t=e.target, P=cur(), p=svgPt(e), fx=p[0], fy=p[1];
+  if(t.closest && t.closest("#xrMk")) drag={ k:"mk", ox:P.marker.x-fx, oy:P.marker.y-fy };
+  else if(t.dataset && t.dataset.e) drag={ k:t.dataset.e };
+  else if(t.id==="xrMove") drag={ k:"move", ox:P.field.cx-fx, oy:P.field.cy-fy };
+  else return;
+  svg.setPointerCapture(e.pointerId); e.preventDefault();
+});
+svg.addEventListener("pointermove", function(e){
+  if(!drag) return;
+  var P=cur(), f=P.field, p=svgPt(e), fx=p[0], fy=p[1];
+  if(drag.k==="move"){ f.cx=Math.round(fx+drag.ox); f.cy=Math.round(fy+drag.oy); }
+  else if(drag.k==="mk"){ P.marker.x=Math.round(fx+drag.ox); P.marker.y=Math.round(fy+drag.oy); }
+  else if(drag.k==="l"||drag.k==="r") f.w=clampF(2*Math.abs(fx-f.cx));
+  else f.h=clampF(2*Math.abs(fy-f.cy));
+  drawLF(); render();
+});
+function endDrag(){ if(drag){ drag=null; var f=cur().field; log("Field "+(f.w/10).toFixed(1)+" × "+(f.h/10).toFixed(1)+" cm.", "sys"); } }
+svg.addEventListener("pointerup", endDrag); svg.addEventListener("pointercancel", endDrag);
+function clampF(v){ return Math.max(60, Math.min(430, Math.round(v/5)*5)); }
+function dropMarker(l){
+  var P=cur(), f=P.field;
+  if(!P.marker) P.marker={ l:l, x:Math.round(f.cx + f.w/2 - 25), y:Math.round(f.cy - f.h/2 + 25) };
+  else P.marker.l=l;
+  log("Lead marker <b>"+l+"</b> on the detector.", "sys"); drawLF(); render();
+}
+function renderLfTools(){
+  lfTools.innerHTML = '<button type="button" data-t="palp" class="'+(S.palp?"is-on":"")+'">✋ PALPATE</button><button type="button" data-t="aec" class="'+(S.showAec?"is-on":"")+'">▢ AEC</button>';
+  Array.prototype.forEach.call(lfTools.querySelectorAll("button"), function(b){ b.addEventListener("click", function(){
+    if(b.dataset.t==="palp") S.palp=!S.palp; else S.showAec=!S.showAec; renderLfTools(); drawLF(); }); });
+}
+
+/* =============================================================
+   FLOW
+   ============================================================= */
+function gotoReq(){ setPhase("req"); init3D(); syncRoom(); loadFilms(function(){}); log("New request: AP and lateral right humerus. Choose the patient, check the request, prepare her.", "sys"); }
+function startProj(p){
+  if(p==="ap"){ var miss=CHECKS.filter(function(c){ return !S.checks[c.id]; }); if(miss.length) log("Not done: "+miss.map(function(c){ return c.t.toLowerCase(); }).join("; ")+".", "warn"); }
+  S.proj=p; setPhase("setup"); syncRoom();
+  log(p==="ap" ? "AP humerus: decide how she is positioned, and set the arm." : "Lateral: she stays where she is — re-position the arm for the lateral.", "sys");
+}
+function gotoCentre(){ setPhase("centre"); renderLfTools(); drawLF(); log("Light beam on. Put the cross-wires on the spot and collimate.", "sys"); }
+function gotoExpose(){
+  var P=cur(); if(!P.marker){ log("Place a marker first.", "warn"); return; }
+  setPhase("expose"); syncRoom(); log("At the console. Set the exposure and give the instruction.", "sys");
+}
+function goBack(){ if(S.phase==="centre"){ setPhase("setup"); syncRoom(); } else if(S.phase==="expose"){ gotoCentre(); } }
+
+/* exposure physics (deliberately simple):
+   manual: detector signal S = mAs/mAs0 · (kV/kV0)^4 · (100/SID)^2 · (grid ? 1 : 2.2);  DI = 10·log10(S);  EI = 400·S
+   AEC: each selected chamber reads what is over it on the film you would get — raw beam (air) ends the exposure far
+   too early, the thick chest wall too late, and a chamber outside the field never sees any dose (back-up timer). */
+function filmFor(sh){ return sh.set.rot==="int" ? "lat_x" : "ap_x"; }
+function filmAt(name, x, y){       // film value (0-1 relative to bone) at arm mm
+  var F=FILM[name], st=CAL.films[name], px=Math.round((x-CAL.x0)/CAL.mmpp), py=Math.round((y-CAL.y0)/CAL.mmpp);
+  if(!F || px<0 || py<0 || px>=F.w || py>=F.h) return 0;
+  return (F.a[py*F.w+px]-st.bg)/(st.bone-st.bg);
+}
+function chamberDI(name, f, k){
+  var c=AEC_CH[k], x=f.cx+c[0], y=f.cy+c[1], e=fieldEdges(f);
+  if(x+28<e.l || x-28>e.r || y+38<e.t || y-38>e.b) return 6;           // outside the field: back-up timer
+  var v=0, n=0;
+  for(var i=-2;i<=2;i++) for(var j=-3;j<=3;j++){ v+=filmAt(name, x+i*11, y+j*11); n++; }
+  v/=n;
+  return v<0.15 ? -6 : Math.max(-6, Math.min(4, (v-0.75)*4));
+}
+function computeExposure(sh){
+  var P=cur(), e=sh.expo, sid=sh.set.sid||100, ref=EXPO[S.proj], kf=Math.pow(e.kv/ref.kv, 4)*Math.pow(100/sid, 2)*(e.grid?1:2.2), di, mas;
+  if(e.aec){
+    var ks=["l", "c", "r"].filter(function(k){ return e.ch[k]; });
+    di = ks.reduce(function(a, k){ return a+chamberDI(filmFor(sh), sh.field, k); }, 0)/ks.length;
+    di += (Math.random()-0.5)*0.4;
+    mas = Math.max(0.1, Math.round(ref.mas*Math.pow(10, di/10)/kf*100)/100);
+  } else { mas=e.mas; di = 10*Math.log10(mas/ref.mas*kf); }
+  var area=(sh.field.w/10)*(sh.field.h/10);
+  var dap = 0.00005*mas*Math.pow(e.kv/70, 2)*area*Math.pow(100/sid, 2)*(e.grid?1:0.55);
+  return { di:Math.round(di*10)/10, mas:mas, kv:e.kv, ei:Math.round(400*Math.pow(10, di/10)), dap:dap };
+}
+function expose(){
+  var P=cur(), e=P.expo;
+  if(!e.breath){ log("Give an instruction first.", "warn"); return; }
+  if(e.aec && !chCount()){ log("Select at least one AEC chamber.", "warn"); return; }
+  S.busy=true; renderCmds();
+  var set=JSON.parse(JSON.stringify(P.set)); set.pos=posNow();
+  var shot={ set:set, field:JSON.parse(JSON.stringify(P.field)), marker:JSON.parse(JSON.stringify(P.marker)),
+    expo:JSON.parse(JSON.stringify(e)), checks:JSON.parse(JSON.stringify(S.checks)), seed:Math.floor(Math.random()*1e6) };
+  holdEl.innerHTML = e.breath==="hold" ? "KEEP STILL… STOP BREATHING<small>exposing</small>" : (e.breath==="still" ? "KEEP STILL<small>exposing</small>" : "EXPOSING<small>(no instruction given)</small>");
+  holdEl.classList.remove("scg-hidden");
+  setTimeout(function(){
+    flashEl.classList.remove("is-on"); void flashEl.offsetWidth; flashEl.classList.add("is-on");
+    var done=function(){
+      holdEl.classList.add("scg-hidden");
+      acqEl.classList.remove("scg-hidden"); acqTitle.textContent="PROCESSING"; acqNum.textContent=PROJ[S.proj].long+" · DR";
+      loadFilms(function(){
+        var ex=computeExposure(shot); shot.kv=ex.kv; shot.mas=ex.mas; shot.di=ex.di; shot.ei=ex.ei; shot.dap=ex.dap;
+        log("☢ Exposure: "+ex.kv+" kV, "+ex.mas+" mAs"+(e.aec?" (AEC)":"")+".", "ok");
+        shot.cv = renderShot(shot);
+        P.shots.push(shot); S.dose += shot.dap;
+        acqEl.classList.add("scg-hidden"); S.busy=false;
+        setPhase("review"); showShot(shot);
+        log("Image ready — DI "+(shot.di>=0?"+":"")+shot.di.toFixed(1)+", EI "+shot.ei+".", Math.abs(shot.di)>2?"warn":"ok");
+      });
+    };
+    var fired=false; function once(){ if(!fired){ fired=true; setTimeout(done, 300); } }
+    if(room3d) room3d.expose(once);
+    setTimeout(once, 1600);                         // don't wait on the 3-D flash if the page isn't drawing
+  }, 1300);
+}
+function accept(){
+  var P=cur(); P.accepted=true;
+  var g=gradeShot(S.proj, P.shots[P.shots.length-1]);
+  if(P.shots.length===1 && g.score>=45) S.firstGood[S.proj]=true;
+  log(PROJ[S.proj].long+" accepted.", "ok");
+  if(S.proj==="ap") startProj("lat"); else showResult();
+}
+function repeatShot(){
+  S.repeats++;
+  log("Repeat requested — re-position and expose again (extra dose).", "warn");
+  setPhase("setup"); syncRoom();
+}
+
+/* =============================================================
+   IMAGE SYNTHESIS — the real film, re-projected through the user's set-up
+   ============================================================= */
+var FILM={};
+function loadFilms(cb){
+  var need=["ap_x", "lat_x"].filter(function(n){ return !FILM[n]; }), left=need.length;
+  if(!left){ cb(); return; }
+  need.forEach(function(n){
+    var im=new Image(), tries=0;
+    im.onerror=function(){ if(++tries<6) setTimeout(function(){ im.src=url(n)+(ASSETS?"":"?t="+tries); }, 300*tries); };
+    im.onload=function(){
+      if(FILM[n]){ if(--left===0) cb(); return; }
+      var c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
+      var g=c.getContext("2d"); g.drawImage(im, 0, 0);
+      var d=g.getImageData(0, 0, c.width, c.height).data, a=new Uint8Array(c.width*c.height);
+      for(var i=0;i<a.length;i++) a[i]=d[i*4];
+      FILM[n]={ w:c.width, h:c.height, a:a };
+      if(--left===0) cb();
+    }; im.src=url(n);
+  });
+}
+function rng(seed){ var s=seed>>>0; return function(){ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+function renderShot(sh){
+  var C=CAL, F=FILM[filmFor(sh)], k=3, f=sh.field, W=Math.round(f.w*k), H=Math.round(f.h*k);
+  var cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+  var g=cv.getContext("2d"), img=g.createImageData(W, H), out=new Float32Array(W*H);
+  var set=sh.set, e=sh.expo, sid=set.sid||100, mm=C.mmpp;
+  // magnification relative to the reference film (arm ~6 cm from the detector at 100 cm; ~7 cm through the table)
+  var oid = set.pos==="supine" ? 7 : 6, mBody = (sid/(sid-oid))/(100/94);
+  var cx=f.cx, cy=f.cy;
+  for(var j=0;j<H;j++){
+    var y=f.cy-f.h/2+(j+0.5)/k;
+    for(var i=0;i<W;i++){
+      var x=f.cx-f.w/2+(i+0.5)/k;
+      var sx=cx+(x-cx)/mBody, sy=cy+(y-cy)/mBody;
+      var px=(sx-C.x0)/mm, py=(sy-C.y0)/mm, x0=Math.floor(px), y0=Math.floor(py), fx=px-x0, fy=py-y0, v;
+      if(x0<0||y0<0||x0>=F.w-1||y0>=F.h-1) v=20;
+      else { var o=y0*F.w+x0, a=F.a; v=(a[o]*(1-fx)+a[o+1]*fx)*(1-fy)+(a[o+F.w]*(1-fx)+a[o+F.w+1]*fx)*fy; }
+      out[j*W+i]=v;
+    }
+  }
+  // simulated foreign bodies (added density) — bra strap and slider, necklace
+  var ov=document.createElement("canvas"); ov.width=W; ov.height=H; var og=ov.getContext("2d");
+  og.setTransform(k, 0, 0, k, -(f.cx-f.w/2)*k, -(f.cy-f.h/2)*k);
+  if(!sh.checks.gown){
+    og.filter="blur("+(1.5*k)+"px)"; og.strokeStyle="rgba(255,255,255,.22)"; og.lineWidth=9;
+    og.beginPath(); og.moveTo(176, -20); og.quadraticCurveTo(150, 60, 166, 150); og.stroke();
+    og.filter="none"; og.fillStyle="rgba(255,255,255,.95)";
+    og.save(); og.translate(156, 72); og.rotate(-0.15); og.fillRect(-7, -3, 14, 2.4); og.fillRect(-7, 1, 14, 2.4); og.fillRect(-7, -3, 2.4, 6.4); og.fillRect(4.6, -3, 2.4, 6.4); og.restore();
+    og.beginPath(); og.arc(164, 140, 4, 0, 7); og.lineWidth=1.8; og.strokeStyle="rgba(255,255,255,.95)"; og.stroke();
+  }
+  if(!sh.checks.jewel){
+    og.filter="none"; og.fillStyle="rgba(255,255,255,.95)";
+    for(var b=0;b<=60;b++){ var t=Math.PI*(0.1+0.8*b/60); og.beginPath(); og.arc(MID+190*Math.cos(t), -40+180*Math.sin(t), 1.4, 0, 7); og.fill(); }
+  }
+  var od=og.getImageData(0, 0, W, H).data;
+  // exposure: contrast (kV, grid), noise (under), burn-out (over)
+  var kc=Math.pow(65/e.kv, 0.6)*(e.grid?1:0.8), fog=e.grid?0:14, R=rng(sh.seed);
+  var sig=1.6+(sh.di<0 ? 3.6*(-sh.di) : 0), over=Math.max(0, sh.di-1.5);
+  var meanV=100;
+  for(var q=0;q<out.length;q++){
+    var v=out[q] + od[q*4+3]*od[q*4]/255*0.55;
+    v = meanV + (v-meanV)*kc + fog;
+    if(over>0){ v -= over*9*(1 - v/255); if(v<38+over*5) v=Math.max(0, v-(38+over*5-v)*0.9); }
+    v+=(R()+R()+R()-1.5)*2*sig;
+    out[q]=v;
+  }
+  // movement: blur toward the shoulder (she breathes) — more without any instruction
+  if(e.breath!=="hold"){
+    var tmp=out.slice(), L=Math.round((e.breath==="none" ? 2.4 : 1.1)*k);
+    for(var jj=0;jj<H;jj++){ var yy=f.cy-f.h/2+jj/k, wgt=Math.max(0.35, Math.min(1, (260-yy)/160));
+      for(var ii=0;ii<W;ii++){ var acc=0, cnt=0; for(var d=-L; d<=L; d++){ var j2=Math.max(0, Math.min(H-1, jj+d)); acc+=tmp[j2*W+ii]; cnt++; }
+        out[jj*W+ii]=tmp[jj*W+ii]*(1-wgt)+acc/cnt*wgt; } }
+  }
+  var D=img.data;
+  for(var z=0;z<out.length;z++){ var c=Math.max(0, Math.min(255, out[z])); D[z*4]=D[z*4+1]=D[z*4+2]=c; D[z*4+3]=255; }
+  g.putImageData(img, 0, 0);
+  // the lead marker (on the detector: no magnification)
+  if(sh.marker){
+    var m=sh.marker, mx=(m.x-(f.cx-f.w/2))*k, my=(m.y-(f.cy-f.h/2))*k;
+    if(mx>-20 && my>-20 && mx<W+20 && my<H+20){
+      g.fillStyle="rgba(200,200,200,.35)"; g.fillRect(mx-8*k, my-8*k, 16*k, 16*k);
+      g.fillStyle="#fff"; g.font="bold "+(12*k)+"px Arial, sans-serif"; g.textAlign="center"; g.textBaseline="middle"; g.fillText(m.l, mx, my+0.5*k);
+    }
+  }
+  return cv;
+}
+function shotLabel(sh){ return (sh.set.rot==="int" ? "LAT" : "AP")+" R HUMERUS · "+(sh.set.pos==="supine" ? "SUPINE" : (sh.set.pos==="sit" ? "SEATED" : "ERECT")); }
+function showShot(sh){
+  var c=sh.cv, s=Math.min(1, 1400/Math.max(c.width, c.height));
+  viewCv.width=Math.round(c.width*s); viewCv.height=Math.round(c.height*s);
+  viewCv.getContext("2d").drawImage(c, 0, 0, viewCv.width, viewCv.height);
+  info.textContent = shotLabel(sh)+"\n"+sh.kv+" kV  "+sh.mas+" mAs"+(sh.expo.aec?" AEC":"")+"  SID "+(sh.set.sid||100)+"\nEI "+sh.ei+"  DI "+(sh.di>=0?"+":"")+sh.di.toFixed(1);
+  info2.textContent = (sh.field.w/10).toFixed(1)+" × "+(sh.field.h/10).toFixed(1)+" cm\nDAP "+sh.dap.toFixed(3)+" Gy·cm²";
+}
+
+/* =============================================================
+   GRADING
+   ============================================================= */
+function fieldEdges(f){ return { l:f.cx-f.w/2, r:f.cx+f.w/2, t:f.cy-f.h/2, b:f.cy+f.h/2 }; }
+function gradeShot(p, sh){
+  var C=CAL, set=sh.set, rows=[], score=0;
+  function row(st, title, pts, max, note){ rows.push({ st:st, t:title, pts:pts, max:max, n:note }); score+=pts; }
+  if(p==="ap"){
+    var po=POSITION[S.kase||"walk"][set.pos];
+    row(po[1], "Patient position", po[0], 5, po[2]);
+    row(set.rot==="sup"?"ok":"bad", "Arm rotation", set.rot==="sup"?6:0, 6, set.rot==="sup" ? "Hand supinated, epicondyles parallel to the detector: a true AP, the greater tuberosity in profile laterally." : "Internally rotated: that's the lateral position. Your 'AP' is a lateral, as you can see on the image.");
+  } else {
+    row(set.rot==="int"?"ok":"bad", "Arm rotation", set.rot==="int"?11:0, 11, set.rot==="int" ? "Internally rotated with the elbow flexed: epicondyles superimposed, the lesser tuberosity in profile medially. That's 90° to the AP." : "The arm wasn't rotated, so this is a second AP, not a lateral, as you can see on the image.");
+  }
+  var sid=set.sid||100;
+  row(sid===100?"ok":"warn", "SID", sid===100?3:1, 3, sid===100 ? "100 cm." : sid+" cm: no benefit for a limb this close to the detector, and it needs more mAs."+(set.pos==="supine"&&sid>150?" The tube is near the ceiling over a table.":""));
+  // centring
+  var ref=C.ref, ex=sh.field.cx-ref[0], ey=sh.field.cy-ref[1], cent=Math.abs(ex)<=C.tol[0] && Math.abs(ey)<=C.tol[1], near=Math.abs(ex)<=C.tol[0]*2 && Math.abs(ey)<=C.tol[1]*2;
+  row(cent?"ok":(near?"warn":"bad"), "Centring", cent?7:(near?3:0), 7, (cent ? "On the spot: " : "Off by "+(Math.round(Math.hypot(ex, ey)/10*10)/10)+" cm ("+dirTxt(ex, ey)+"). Aim for the ")+"mid-shaft of the humerus, midway between the shoulder and elbow joints.");
+  // collimation
+  var e=fieldEdges(sh.field), n=C.need, o=C.over, miss=[], overs=[];
+  if(e.t>n.t) miss.push("shoulder joint (humeral head / acromion)");
+  if(e.b<n.b) miss.push("elbow joint");
+  if(e.l>n.l) miss.push("lateral soft tissue of the arm");
+  if(e.r<n.r) miss.push("medial humeral head and glenoid");
+  if(e.t<o.t) overs.push("neck and soft tissue above the shoulder"); if(e.b>o.b) overs.push("forearm");
+  if(e.r>o.r) overs.push("chest wall and breast"); if(e.l<o.l) overs.push("empty space beyond the skin");
+  var cpts = (miss.length?0:6) + (overs.length?0:3);
+  row(miss.length?"bad":(overs.length?"warn":"ok"), "Collimation", cpts, 9, (miss.length ? "Cut off: "+miss.join(", ")+". Both joints must be on a humerus film. " : "Both joints and the soft tissue included. ")+(overs.length ? "Too wide: "+overs.join(", ")+"." : (miss.length?"":"Tight and complete.")));
+  // marker
+  var m=sh.marker, mst="ok", mpts=4, mtx="";
+  var inF = m && m.x>e.l+4 && m.x<e.r-4 && m.y>e.t+4 && m.y<e.b-4;
+  var overAnat = m && filmAt(filmFor(sh), m.x, m.y) > 0.3;
+  if(!m){ mst="bad"; mpts=0; mtx="No marker."; }
+  else if(!inF){ mst="bad"; mpts=0; mtx="The marker is outside the collimated field, so it won't be on the image."; }
+  else if(m.l!=="R"){ mst="bad"; mpts=0; mtx="Wrong side: this is her right arm, so it needs an R."; }
+  else if(overAnat){ mst="warn"; mpts=2; mtx="Correct, but it overlies the arm. Keep it clear of anatomy."; }
+  else mtx="'R' correct, inside the field, clear of anatomy.";
+  row(mst, "Anatomical marker", mpts, 4, mtx);
+  // exposure
+  var di=sh.di, ad=Math.abs(di);
+  row(ad<=1?"ok":(ad<=2.5?"warn":"bad"), "Exposure (DI)", ad<=1?5:(ad<=2.5?2:0), 5, "DI "+(di>=0?"+":"")+di.toFixed(1)+(ad<=1 ? ": within target." : di<0 ? ": underexposed, so quantum mottle and noise." : ": overexposed. Unnecessary dose, and the soft tissue burns out at the extreme.")+(sh.expo.aec ? aecNote(sh) : ""));
+  var kv=sh.kv;
+  row(kv>=60&&kv<=75?"ok":(kv>=55&&kv<=85?"warn":"bad"), "kV", kv>=60&&kv<=75?3:(kv>=55&&kv<=85?1:0), 3, kv+" kV: "+(kv>=60&&kv<=75 ? "good bone contrast for the humerus." : kv<60 ? "low. High contrast and more dose, and the shoulder end may be underpenetrated." : "high, so contrast is flat and trabecular detail is lost."));
+  row(sh.expo.grid?"ok":"warn", "Grid", sh.expo.grid?2:1, 2, sh.expo.grid ? "Grid in (bucky): the shoulder end is thick enough to scatter." : "No grid. Acceptable for a slim arm, but scatter from the shoulder end lowers contrast.");
+  var br=sh.expo.breath;
+  row(br==="hold"?"ok":(br==="still"?"warn":"bad"), "Instruction", br==="hold"?3:(br==="still"?1:0), 3, br==="hold" ? "Breath held, so the shoulder girdle doesn't move." : br==="still" ? "She kept still but kept breathing: slight blur toward the shoulder (simulated)." : "No instruction: movement blur, worst at the shoulder (simulated).");
+  var chk=CHECKS.filter(function(c){ return !sh.checks[c.id]; });
+  row(chk.length?"warn":"ok", "Pre-exposure checks", Math.max(0, 3-chk.length), 3, chk.length ? "Missed: "+chk.map(function(c){ return c.t.toLowerCase(); }).join("; ")+"." : "ID, justification and preparation complete.");
+  return { rows:rows, score:Math.min(50, score) };
+}
+function aecNote(sh){
+  var e=sh.expo, f=sh.field, name=filmFor(sh), parts=[];
+  ["l", "c", "r"].forEach(function(k){ if(!e.ch[k]) return; var d=chamberDI(name, f, k);
+    parts.push((k==="l"?"left":k==="c"?"centre":"right")+" chamber "+(d>=6 ? "outside the field (it never sees dose, so the back-up timer ends it)" : d<=-6 ? "over air (raw beam ends the exposure far too early)" : d>1.5 ? "over the chest wall (too thick)" : "over the arm")); });
+  return " AEC: "+parts.join("; ")+". The arm rarely covers a chamber fully, so manual exposure is the safer choice for a limb.";
+}
+function dirTxt(ex, ey){
+  var a=[];
+  if(Math.abs(ey)>5) a.push(ey<0 ? "too high, toward the shoulder" : "too low, toward the elbow");
+  if(Math.abs(ex)>5) a.push(ex<0 ? "too lateral" : "too medial");
+  return a.join(", ") || "close";
+}
+
+/* =============================================================
+   RESULT
+   ============================================================= */
+function showResult(){
+  setPhase("result");
+  var shots={ ap:S.ap.shots[S.ap.shots.length-1], lat:S.lat.shots[S.lat.shots.length-1] };
+  var G={ ap:gradeShot("ap", shots.ap), lat:gradeShot("lat", shots.lat) };
+  var total=Math.max(0, G.ap.score+G.lat.score - 5*S.repeats);
+  var marker = S.repeats===0 && S.firstGood.ap && S.firstGood.lat;
+  showShot(shots.ap);
+  var cls = total>=85 ? "" : (total>=60 ? " is-warn" : " is-bad");
+  function rowsHtml(g){ return g.rows.map(function(r){
+    return '<div class="scg-drow"><i class="scg-d-'+r.st+'">'+(r.st==="ok"?"✓":(r.st==="warn"?"!":"✕"))+'</i><div style="flex:1"><b>'+r.t+'</b><em>'+r.pts+' / '+r.max+'</em><p>'+r.n+'</p></div></div>'; }).join(""); }
+  var h = '<div>'+
+    '<h2>Your films</h2><div class="scg-cap">The images you accepted, built from the real films with your positioning, collimation, marker and exposure applied. Tap one to view it in the main viewer.</div>'+
+    '<div class="xr-heroes"><div class="scg-hero" data-p="ap" style="cursor:pointer"><div class="scg-hero-lab">AP</div></div><div class="scg-hero" data-p="lat" style="cursor:pointer"><div class="scg-hero-lab">LAT</div></div></div>'+
+    '<div class="xr-sub">Image criteria — what the radiologist checks</div>'+criteriaHtml(shots)+
+    '</div>'+
+    '<div class="scg-debrief">'+
+    '<div class="scg-grade'+cls+'"><b>'+total+'</b><span>out of 100<br>AP '+G.ap.score+' · LAT '+G.lat.score+(S.repeats?' · repeats −'+(5*S.repeats):'')+'<br>total DAP '+S.dose.toFixed(3)+' Gy·cm²</span></div>'+
+    '<div class="xr-sub">AP</div>'+rowsHtml(G.ap)+'<div class="xr-sub">Lateral</div>'+rowsHtml(G.lat)+
+    '<button class="scg-again" id="xrAgain" type="button">↺ Start again</button></div>'+
+    '<div class="scg-credits"><b>Lateral film adapted from:</b> Abedeen, Iftekharul; Rahman, Md. Ashiqur; Zohra Prottyasha, Fatema; Ahmed, Tasnim; Mohmud Chowdhury, Tareque; Shatabda, Swakkhar (2023). '+
+    '<i>FracAtlas: A Dataset for Fracture Classification, Localization and Segmentation of Musculoskeletal Radiographs.</i> figshare. Dataset. '+
+    '<a href="https://doi.org/10.6084/m9.figshare.22363012.v7" target="_blank" rel="noopener">https://doi.org/10.6084/m9.figshare.22363012.v7</a>, '+
+    '<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. '+
+    '<b>Changes made:</b> a corner mark and a flat grey redaction block were removed by inpainting; the film was scaled (≈0.93 mm/px, estimated), rotated 2.7° and aligned to the AP film on the humeral head and distal humerus. '+
+    '<b>AP film:</b> a normal AP humerus supplied for this project; converted to greyscale, pixel spacing estimated at 0.2 mm. '+
+    'The two films are from different people; the plate and screws on the lateral are part of that source film, not a finding in the simulated patient. '+
+    'Both films were extended beyond their edges with a blurred synthetic margin, seen only if you collimate wider than the original film. In your browser each image is cropped to your field, magnified for SID and position, '+
+    'and given simulated straps, necklace, movement blur, noise / contrast for your exposure, and your lead marker. None of these is a real finding. '+
+    'Exposure, DI and DAP use a simplified teaching model. The 3-D room is generic. Educational simulation — not a medical device, not for clinical use.</div>';
+  resultEl.innerHTML = h; resultEl.classList.remove("scg-hidden");
+  ["ap", "lat"].forEach(function(p){
+    var box=resultEl.querySelector('.scg-hero[data-p="'+p+'"]'), c=document.createElement("canvas"), src=shots[p].cv, s=Math.min(1, 520/src.height);
+    c.width=Math.round(src.width*s); c.height=Math.round(src.height*s); c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+    c.style.cssText="width:auto;max-width:100%;max-height:420px;margin:0 auto";
+    box.insertBefore(c, box.firstChild);
+    box.addEventListener("click", function(){ showShot(shots[p]); });
+  });
+  $("xrAgain").addEventListener("click", resetAll);
+  if(marker){ achWrap.classList.remove("scg-hidden"); playAchievement(); log("Marker unlocked: <b>That's so Humerus!</b>", "ok"); }
+  else log("Debrief ready"+(S.repeats?" — "+S.repeats+" repeat(s).":".")+" The marker needs both views diagnostic first time (45+/50 each, no repeats).", "sys");
+  render();
+}
+function criteriaHtml(shots){
+  var ap=shots.ap, lat=shots.lat, n=CAL.need;
+  function both(sh){ var e=fieldEdges(sh.field); return e.t<=n.t && e.b>=n.b; }
+  var clean = function(sh){ return sh.checks.gown && sh.checks.jewel; };
+  var rows=[
+    [both(ap) && both(lat), "<b>Both joints</b>, shoulder and elbow, on each film"],
+    [ap.set.rot==="sup", "<b>AP</b>: the epicondyles parallel to the detector, the greater tuberosity in profile laterally"],
+    [lat.set.rot==="int", "<b>Lateral</b>: the epicondyles superimposed, the lesser tuberosity in profile medially"],
+    [ap.set.rot==="sup" && lat.set.rot==="int", "<b>Two projections at 90°</b> to each other"],
+    [Math.abs(ap.di)<=1 && Math.abs(lat.di)<=1, "<b>Exposure</b>: cortex and trabecular pattern clear along the whole shaft, soft tissue visible"],
+    [ap.expo.breath==="hold" && lat.expo.breath==="hold", "<b>No movement</b> blur at the shoulder"],
+    [clean(ap) && clean(lat), "<b>No artefacts</b> from clothing or jewellery"],
+    [!!ap.marker && !!lat.marker, "<b>Markers</b> on both films"]
+  ];
+  return '<table class="xr-crit">'+rows.map(function(r){ return '<tr><td style="color:'+(r[0]?"var(--accent)":"var(--warn)")+'">'+(r[0]?"✓":"!")+'</td><td>'+r[1]+'</td></tr>'; }).join("")+'</table>';
+}
+
+/* =============================================================
+   CLI
+   ============================================================= */
+function parseCommand(raw){
+  var c=raw.trim().toLowerCase(); if(!c) return; logCmd(c);
+  var a=c.split(/\s+/), P=cur();
+  var hit=cmdList().filter(function(k){ return CMD[k].k===a[0]; })[0];
+  if(hit){ if(cmdEnabled(hit)) CMD[hit].go(); else log("Not yet — complete this step first.", "warn"); return; }
+  if(a[0]==="help"){ log("Commands: patient walk|trolley · next · back · expose · accept · repeat · position stand|sit|supine · arm sup|int · sid 100|150|180 · kv N · mas N · aec on|off · chambers l c r · grid on|off · breathe hold|still|none · field W H (cm) · palpate · restart", "sys"); return; }
+  if(a[0]==="patient" && S.phase==="req"){ setCase(a[1]); return; }
+  if(a[0]==="position" && S.phase==="setup" && S.proj==="ap"){ if(["stand","sit","supine"].indexOf(a[1])>=0) setChoice("pos", a[1]); return; }
+  if(a[0]==="arm" && S.phase==="setup"){ if(["sup","int"].indexOf(a[1])>=0) setChoice("rot", a[1]); return; }
+  if(a[0]==="kv" && S.phase==="expose"){ P.expo.kv=Math.max(45, Math.min(125, +a[1]||P.expo.kv)); render(); return; }
+  if(a[0]==="mas" && S.phase==="expose"){ P.expo.mas=MAS_STEPS[nearestMas(+a[1]||P.expo.mas)]; P.expo.aec=false; render(); return; }
+  if(a[0]==="aec" && S.phase==="expose"){ P.expo.aec=a[1]!=="off"; render(); return; }
+  if(a[0]==="chambers" && S.phase==="expose"){ var s=a.slice(1).join(""); P.expo.ch={ l:s.indexOf("l")>=0, c:s.indexOf("c")>=0, r:s.indexOf("r")>=0 }; P.expo.aec=true; render(); return; }
+  if(a[0]==="grid" && S.phase==="expose"){ P.expo.grid=a[1]!=="off"&&a[1]!=="out"; render(); return; }
+  if(a[0]==="breathe" && S.phase==="expose"){ if(["hold","still","none"].indexOf(a[1])>=0){ P.expo.breath=a[1]; render(); } return; }
+  if(a[0]==="sid" && S.phase==="setup"){ var v=+a[1]; if([100,150,180].indexOf(v)>=0) setChoice("sid", v); return; }
+  if(a[0]==="field" && S.phase==="centre"){ P.field.w=clampF((+a[1]||0)*10||P.field.w); P.field.h=clampF((+a[2]||0)*10||P.field.h); drawLF(); render(); return; }
+  if(a[0]==="palpate" && S.phase==="centre"){ S.palp=!S.palp; renderLfTools(); drawLF(); return; }
+  if(a[0]==="restart"){ resetAll(); return; }
+  log("Unknown command — try: help", "warn");
+}
+cliForm.addEventListener("submit", function(e){ e.preventDefault(); parseCommand(cli.value); cli.value=""; });
+
+function resetAll(){
+  S=freshState(); resultEl.classList.add("scg-hidden"); resultEl.innerHTML=""; achWrap.classList.add("scg-hidden");
+  logEl.innerHTML=""; gotoReq();
+}
+$("scgStart").addEventListener("click", function(){ titleEl.classList.add("scg-hidden"); gotoReq(); });
+
+/* debug hooks */
+window.__xr = { S:function(){ return S; }, cur:cur, setPhase:setPhase, startProj:startProj, gotoCentre:gotoCentre, gotoExpose:gotoExpose,
+  expose:expose, accept:accept, grade:gradeShot, showResult:showResult, parse:parseCommand, drawLF:drawLF, setCase:setCase,
+  ideal:function(){ var P=cur(); P.field={ cx:CAL.ref[0], cy:CAL.ref[1], w:CAL.ideal[0], h:CAL.ideal[1] }; P.marker={ l:"R", x:CAL.mark[0], y:CAL.mark[1] }; render(); } };
+setPhase("title");
+})();
+</script>
+</body>
+</html>
